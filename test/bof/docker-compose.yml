@@ -1,5 +1,0 @@
-services:
-  uid:
-    image: anssi/fcsc2023-pwn-uid:latest
-    ports:
-      - "4000:4000"
