@@ -5,6 +5,7 @@ import readelf
 import shutil
 import subprocess
 import datetime
+import importlib
 from pwn import *
 
 
@@ -67,7 +68,7 @@ def sort_binaries(files) -> dict:
     return binaries
 
 
-def fetch_ld(bins, path):
+def fetch_ld(bins: dict, path: Path):
     for libc in bins["libc"]:
         lib_path = pwnlib.libcdb.download_libraries(libc)
         if lib_path is not None:
@@ -76,11 +77,17 @@ def fetch_ld(bins, path):
             bins["ld"] = [str(path / 'ld-linux-x86-64.so.2')]
 
 
+def patchelf(bins: dict, path: Path):
+    os.system("patchelf --set-rpath %s %s" % (path, bins["challs"][0]))
+    os.system("patchelf --set-interpreter  %s %s" %
+              (bins["ld"][0], bins["challs"][0]))
+
+
 def open_file(path: Path):
     mode = "w"
     if path.is_file():
-        mode = "w" if input(
-            "Do you want to overwrite the content of %s ? [y,N]: " % os.path.basename(path)).lower() == "y" else "a"
+        mode = "a" if input(
+            "Do you want to overwrite the content of %s ? [Y,n]: " % os.path.basename(path)).lower() == "n" else "w"
 
     return open(path, mode)
 
@@ -88,10 +95,10 @@ def open_file(path: Path):
 def init_files(dir, bins) -> dict:
     files = {}
     files["exploit.py"] = (
-        "from pwn import *\n\nCHALL=%s\n" % bins["challs"][0])
+        "from pwn import *\n\nCHALL=\"%s\"\n" % bins["challs"][0])
 
     if bins["libc"]:
-        files["exploit.py"] += ("LIBC=%s\n" % bins["libc"][0])
+        files["exploit.py"] += ("LIBC=\"%s\"\n" % bins["libc"][0])
 
     chall = os.path.basename(dir)
     files["notes.md"] = ("# [Pwn] %s | %s\n---\n" %
@@ -108,55 +115,48 @@ def init_files(dir, bins) -> dict:
     return files
 
 
-def test():
-    base = "/home/botman/Documents/projects/pwninit/test/bins/"
-    pathes = [base+"challs", base+"libc", base+"ld"]
-
-    for path in pathes:
-        binaries = find_binaries(path)
-        bins = sort_binaries(binaries)
-        stats = []
-
-        for b in bins:
-            stats.append(len(bins[b]))
-
-        print(path)
-        print("libc, ld, challs", stats)
-        print("")
-
-
-def main() -> int:
+def pwninit(path) -> int:
     parser = argparse.ArgumentParser(description='pwninit')
     parser.add_argument('-p', '--provider', action='store',
-                        metavar='provider', type=provider_type, help='fetch')
+                        metavar='provider', type=provider_type, help='fetch chall from url')
     parser.add_argument('-u', '--utils', action='store',
-                        metavar='utils', type=utils_type, help='set utils')
+                        metavar='utils', type=utils_type, help='scripts to run on the binary')
     args = parser.parse_args()
 
     if args.provider:
         provider_name = args.provider[1].split('.')[-1]
         try:
-            __import__(provider_name).main(args.provider)
-        except:
+            path = importlib.import_module(
+                "providers."+provider_name).run("".join(args.provider), path)
+        except ModuleNotFoundError:
             print("No providers named %s" % provider_name)
 
-    # path = Path().resolve()
-    path = Path("/home/botman/Documents/projects/pwninit/test/bof")
+    if not path:
+        return 1
+
     binaries = find_binaries(path)
+    if len(binaries) == 0:
+        print("No binaries founded in %s " % path)
+        return 1
+
     bins = sort_binaries(binaries)
     if len(bins["libc"]) > 0 and len(bins["ld"]) == 0:
         fetch_ld(bins, path)
+
+    if len(bins["libc"]) > 0:
+        patchelf(bins, path)
 
     files = init_files(path, bins)
     if args.utils:
         for util_name in args.utils:
             try:
-                __import__(util_name).run(files, bins, dir)
-            except:
+                files = importlib.import_module(
+                    "utils."+util_name).run(files, bins, dir)
+            except ModuleNotFoundError:
                 print("no utils named %s" % util_name)
 
+    files["exploit.py"] += "\n\ndef exploit(io, elf):\n    io.success('all good')"
+    for file in files:
+        open_file(path / file).write(files[file])
+
     return 0
-
-
-if __name__ == "__main__":
-    exit(main())
