@@ -140,7 +140,7 @@ def cli() -> int:
 
     binaries = find_binaries(path)
     if len(binaries) == 0:
-        log.error("No binaries founded in %s " % path)
+        log.warning("No binaries founded in %s " % path)
         return 1
 
     bins = sort_binaries(binaries)
@@ -150,7 +150,7 @@ def cli() -> int:
 
     if len(bins["libc"]) > 0 and len(bins["ld"]) == 0:
         if not fetch_ld(bins, path):
-            log.error("cannot fetch the ld corresponding to libc")
+            log.warning("cannot fetch the ld corresponding to libc")
 
     if len(bins["libc"]) > 0 and len(bins["ld"]) > 0:
         patchelf(bins, path)
