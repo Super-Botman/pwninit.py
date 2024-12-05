@@ -16,9 +16,6 @@ pip install dist/pwninit-0.0.1-py3-none-any.whl
 ## Usage
 With pwninit.py you have two tools, run and pwninit, pwninit is used to setup the environment of the exploit and run to... run the exploit specified in exploit.py
 
-### Utils
-With pwninit you have some utils to automate some tasks like menu function creations and docker libc fetching
-
 ### pwninit 
 ```zsh
 usage: pwninit [-h] [-p provider] [-u utils]
@@ -32,18 +29,20 @@ options:
   -u utils, --utils utils
                         scripts to run on the binary
 ```
-#### utils
+
 **menu**:
 It will generate you all the code to interact with a chall menu.
+
 usage: `-u menu`
 
-#### providers
 **docker**:
 You can use docker provider when you got only a Dockerfile and yout want to extract the libc from it
+
 usage: `-p docker`
 
 **root-me**:
 For this one you juste have to specify the url of the chall you wanna do and it will fetch you all the bins needed
+
 usage: `-u https://root-me.org/<url>`
 
 ### run
