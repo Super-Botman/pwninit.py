@@ -54,7 +54,7 @@ usage: `-u https://root-me.org/<url>`
 To use it you just have to run `run`
 ```
 options:
-  -r addr, --remote addr run remotely (ip:port for nc and user:password@ip for ssh)
+  -r, --remote run       remotely (ip:port for nc and user:password@ip for ssh)
   -d, --debug            enable debug mode
   -s, --strace           run with strace and store the strace output into strace.out
   --gdb-command 'c'      set a command to run at the start of gdb work only if debug is set
