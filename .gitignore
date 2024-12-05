@@ -1,4 +1,6 @@
 .venv
-test
+dist
+src/pwninit.egg-info
+tests
 *.pyc
 __pycache__
