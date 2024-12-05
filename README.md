@@ -52,7 +52,7 @@ usage: `-u https://root-me.org/<url>`
 
 `run` is the runner of you're template, without it the exploit template would be a little empty but when you use run it become a completely another script very configurable and easy to use.
 To use it you just have to run `run`
-```zsh
+```
 options:
   -h, --help            show this help message and exit
   -r addr, --remote addr
