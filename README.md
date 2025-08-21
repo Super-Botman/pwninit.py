@@ -55,6 +55,22 @@ pwninit -u menu,docker
 - `-p, --provider <provider>` - Fetch challenge from URL or provider
 - `-u, --utils <utils>` - Comma-separated list of utilities to run
 
+### Configuration
+
+pwninit supports configuration through `~/.config/pwninit.conf`:
+
+```ini
+# Author name for generated files
+author=YourName
+
+# Root-me provider settings
+rootme_api_key=your_api_key_here
+```
+
+You can also use environment variables:
+- `PWNINIT_AUTHOR` - Override author name
+- `ROOTME_API_KEY` - Root-me API key for provider authentication
+
 ### run - Exploit Execution  
 
 Execute your exploit with various modes:

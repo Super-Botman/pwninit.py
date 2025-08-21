@@ -1,7 +1,21 @@
 import docker
 import tarfile
+import os
 from io import BytesIO
 from pwn import log
+from pathlib import Path
+
+
+def extract_lib(container, lib, progress):
+    progress.status("Extracting %s" % lib)
+    archive_generator, _ = container.get_archive(lib)
+    file_data = b''.join(archive_generator)
+
+    tar_data = BytesIO(file_data)
+    with tarfile.open(fileobj=tar_data) as tar:
+        tar.extractall(path="./", filter='data')
+
+    progress.status("%s extracted" % lib)
 
 
 def run(name, path):
@@ -9,24 +23,27 @@ def run(name, path):
     image_name = open(path / "Dockerfile",
                       "r").readline().replace("FROM ", "")[:-1]
 
-    image = client.images.pull(image_name)
-    libs = client.containers.run(
-        image_name, 'ldd /bin/ls').replace(b' ', b'').split(b'\n')[:-1]
-    libs = [lib.decode()[1:].split('=>')[-1].split('(')[0] for lib in libs]
-    libs = list(dict.fromkeys(libs))
+    container = client.containers.create(
+        image_name, command=["tail", "-f", "/dev/null"])
+    container.start()
 
-    log.success("libs founded: %s" % "".join(libs))
+    libs = container.exec_run("ldd /bin/ls").output.decode()
+    lib_dir = [l.split("=>")[-1].split(" ")[1]
+               for l in libs.split("\n") if "libc" in l][0]
+    lib_dir = Path(os.path.dirname(lib_dir))
 
-    container = client.containers.create(image_name)
-    for lib in libs:
-        extracting = log.progress("Extracting %s" % lib)
-        archive_generator, stats = container.get_archive(lib)
-        file_data = b''.join(archive_generator)
+    log.success("lib dir founded: %s" % lib_dir)
 
-        tar_data = BytesIO(file_data)
-        with tarfile.open(fileobj=tar_data) as tar:
-            tar.extractall(path=path, filter='data')
+    progress = log.progress("Extracting libs")
 
-        extracting.success("%s extracted" % lib)
+    extract_lib(container, lib_dir / "libc.so.6", progress)
+    extract_lib(container, lib_dir / "ld-linux-x86-64.so.2", progress)
+    container.kill()
+    container.remove()
+
+    progress.success("libs extracted")
 
     return path
+
+
+run("", Path("."))

@@ -1,7 +1,12 @@
 import requests
 import sys
 import os
+import subprocess
+from pathlib import Path
 from pwn import ssh, success, context, log
+from urllib.parse import urlparse
+import re
+from ..config import config
 
 
 def status(logger, text):
@@ -10,37 +15,79 @@ def status(logger, text):
     context.log_level = 'error'
 
 
+def validate_url(url):
+    if not url or not isinstance(url, str):
+        raise ValueError("URL must be a non-empty string")
+
+    parsed = urlparse(url)
+    if parsed.netloc not in ['www.root-me.org', 'root-me.org']:
+        raise ValueError("URL must be from root-me.org")
+
+    if '/Challenges/' not in parsed.path:
+        raise ValueError("URL must be a root-me challenge URL")
+
+
+def extract_ssh_credentials(html_content):
+    ssh_pattern = r'ssh\s+([^\s@]+)@([^\s:]+):(\d+)'
+    match = re.search(ssh_pattern, html_content)
+
+    if not match:
+        try:
+            login_data = html_content.split('ssh')[1].split(
+                ' ')[0].replace('//', '').replace('"', '').split(':')[1:]
+            password = login_data[0]
+            host = login_data[1].split('@')[1]
+            port = int(login_data[2])
+            return password, host, port
+        except (IndexError, ValueError) as e:
+            raise ValueError(
+                f"Could not extract SSH credentials from page: {e}")
+
+    password, host, port = match.groups()
+    return password, host, int(port)
+
+
 def run(url, path):
-    cookies = {
-        "api_key": "375630_7050c5f61159cca8261a0c5c63d438b59135b76a3179334e993f807cbdd5c0ce"}
-    resp = requests.get(
-        "https://api.www.root-me.org/login", cookies=cookies)
-    if resp.status_code != 200:
-        raise Exception("GET /challenges/ {}".format(resp.status_code))
+    validate_url(url)
 
-    data = resp.json()
-    spip_session = data[0]['info']['spip_session']
+    try:
+        api_key = config.get_rootme_api_key()
+    except ValueError as e:
+        log.error(str(e))
 
-    cookies = {
-        "spip_session": spip_session
-    }
-    resp = requests.get(url, cookies=cookies)
-    if resp.status_code != 200:
-        raise Exception("GET /challenges/ {}".format(resp.status_code))
+    cookies = {"api_key": api_key}
+    try:
+        resp = requests.get(
+            "https://api.www.root-me.org/login", cookies=cookies, timeout=30)
+        resp.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        log.error(f"Failed to authenticate with root-me API: {e}")
 
-    print(sys.argv[1])
-    data = resp.text
-    login = data.split('ssh')[1].split(' ')[0].replace(
-        '//', '').replace('"', '').split(':')[1:]
+    try:
+        data = resp.json()
+        spip_session = data[0]['info']['spip_session']
+    except (KeyError, IndexError, ValueError) as e:
+        log.error(f"Failed to parse authentication response: {e}")
 
-    password = login[0]
-    host = login[1].split('@')[1]
-    port = int(login[2])
-    chall_name = password.split('-')[-1]
+    cookies = {"spip_session": spip_session}
+    try:
+        resp = requests.get(url, cookies=cookies, timeout=30)
+        resp.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        log.error(f"Failed to fetch challenge page: {e}")
+
+    try:
+        password, host, port = extract_ssh_credentials(resp.text)
+        chall_name = password.split('-')[-1]
+    except ValueError as e:
+        log.error(str(e))
 
     context.log_level = "error"
-    s = ssh(host=host, port=port, user=password,
-            password=password, timeout=0.5, cache=False)
+    try:
+        s = ssh(host=host, port=port, user=password,
+                password=password, timeout=10, cache=False)
+    except Exception as e:
+        log.error(f"Failed to establish SSH connection: {e}")
 
     if not s.connected():
         return ""
@@ -56,28 +103,36 @@ def run(url, path):
     chall_path = path / category / chall_filename
 
     try:
-        os.mkdir(path / category)
-        os.mkdir(chall_path)
-    except FileExistsError:
-        pass
+        (path / category).mkdir(exist_ok=True)
+        chall_path.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        log.error(f"Failed to create directories: {e}")
 
-    s.download(chall_name, chall_path / './chall')
-    status(download, "chall downloaded successfully")
+    try:
+        s.download(chall_name, chall_path / 'chall')
+        status(download, "chall downloaded successfully")
 
-    s.download('/challenge/app-systeme/ch6/lib/libc.so.6',
-               chall_path / 'libc.so.6')
-    status(download, "libc downloaded successfully")
+        s.download('/challenge/app-systeme/ch6/lib/libc.so.6',
+                   chall_path / 'libc.so.6')
+        status(download, "libc downloaded successfully")
 
-    s.download('/challenge/app-systeme/ch6/lib/ld-linux-x86-64.so.2',
-               chall_path / 'ld-linux-x86-64.so.2')
+        s.download('/challenge/app-systeme/ch6/lib/ld-linux-x86-64.so.2',
+                   chall_path / 'ld-linux-x86-64.so.2')
+    except Exception as e:
+        log.error(f"Failed to download files via SSH: {e}")
 
     status(download, "ld downloaded successfully")
 
     context.log_level = 'info'
     download.success("Files saved")
 
-    os.system('chmod +x %s' % (chall_path / 'chall'))
-    os.system('chmod +x %s' % (chall_path / 'libc.so.6'))
-    os.system('chmod +x %s' % (chall_path / 'ld-linux-x86-64.so.2'))
+    files_to_chmod = ['chall', 'libc.so.6', 'ld-linux-x86-64.so.2']
+    for filename in files_to_chmod:
+        try:
+            subprocess.run(
+                ['chmod', '+x', str(chall_path / filename)], check=True)
+        except subprocess.CalledProcessError as e:
+            log.warning(f"Failed to set executable permission on {
+                        filename}: {e}")
 
     return chall_path

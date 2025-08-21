@@ -6,6 +6,7 @@ import importlib
 import os
 from pathlib import Path
 from pwn import libcdb, ELF, log, context
+from .config import config
 
 
 def utils_type(value: str) -> list:
@@ -44,6 +45,7 @@ def sort_bins(files: list) -> dict:
     elf = None
 
     for f in files:
+        print(f)
         context.log_level = "error"
         elf = ELF(f, checksec=False)
         context.log_level = "info"
@@ -118,7 +120,7 @@ def gen_files(path, bins) -> dict:
 
     files["notes.md"] = open(templates / "notes.md", "r").read().format(
         chall, datetime.datetime.now().strftime("%d/%m/%Y"),
-        checksecs, "0xB0tm4n"
+        checksecs, config.get_author()
     )
 
     return files
