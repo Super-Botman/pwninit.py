@@ -25,7 +25,13 @@ A comprehensive Python toolkit for CTF binary exploitation challenges that strea
 ```bash
 git clone https://github.com/0xb0tm4n/pwninit.py
 cd pwninit.py
-pip install -e .
+python3 -m build
+
+# Install with pipx
+pipx install dist/pwninit-0.0.1-py3-none-any.whl
+
+# Install with pip
+pip install dist/pwninit-0.0.1-py3-none-any.whl
 ```
 
 ## 🛠 Usage

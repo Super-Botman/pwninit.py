@@ -1,7 +1,6 @@
 import requests
 import sys
 import os
-import subprocess
 from pwn import ssh, success, context, log
 
 
@@ -13,7 +12,7 @@ def status(logger, text):
 
 def run(url, path):
     cookies = {
-        "api_key": "<YOUR_API_KEY>"}
+        "api_key": "375630_7050c5f61159cca8261a0c5c63d438b59135b76a3179334e993f807cbdd5c0ce"}
     resp = requests.get(
         "https://api.www.root-me.org/login", cookies=cookies)
     if resp.status_code != 200:
