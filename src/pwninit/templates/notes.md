@@ -1,10 +1,10 @@
-# Pwn {} | {}
+# Pwn {chall} | {date}
 
 ## Checksecs
 ```
-{}
+{checksecs}
 ```
 
 ## Writeup
 
-**Written by *{}***
+**Written by *{author}***

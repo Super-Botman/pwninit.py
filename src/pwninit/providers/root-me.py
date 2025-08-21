@@ -1,11 +1,9 @@
 import requests
-import sys
-import os
 import subprocess
-from pathlib import Path
+import re
+import os
 from pwn import ssh, success, context, log
 from urllib.parse import urlparse
-import re
 from ..config import config
 
 
@@ -109,15 +107,19 @@ def run(url, path):
         log.error(f"Failed to create directories: {e}")
 
     try:
-        s.download(chall_name, chall_path / 'chall')
-        status(download, "chall downloaded successfully")
+        files = s.system("ls").recvall()[:-1]
+        files = files.decode().split(" ")
+        for f in files:
+            if f != "":
+                s.download(f, chall_path / os.path.basename(f))
 
-        s.download('/challenge/app-systeme/ch6/lib/libc.so.6',
-                   chall_path / 'libc.so.6')
-        status(download, "libc downloaded successfully")
+        libs = s.system(f'ldd {chall_name}').recvall()
+        libs = libs.decode().replace("\t", "").split("\n")[:-1]
+        libs = [l.split(" => ")[-1].split(" ")[0] for l in libs]
+        for l in libs:
+            if "No such file or directory" not in s.system("ls % s" % l).recvall().decode().strip():
+                s.download(l, chall_path / os.path.basename(l))
 
-        s.download('/challenge/app-systeme/ch6/lib/ld-linux-x86-64.so.2',
-                   chall_path / 'ld-linux-x86-64.so.2')
     except Exception as e:
         log.error(f"Failed to download files via SSH: {e}")
 
@@ -125,14 +127,5 @@ def run(url, path):
 
     context.log_level = 'info'
     download.success("Files saved")
-
-    files_to_chmod = ['chall', 'libc.so.6', 'ld-linux-x86-64.so.2']
-    for filename in files_to_chmod:
-        try:
-            subprocess.run(
-                ['chmod', '+x', str(chall_path / filename)], check=True)
-        except subprocess.CalledProcessError as e:
-            log.warning(f"Failed to set executable permission on {
-                        filename}: {e}")
 
     return chall_path

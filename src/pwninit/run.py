@@ -1,4 +1,4 @@
-from pwn import *
+from pwn import process, log, gdb, ssh, remote, context, ELF
 import argparse
 import sys
 
@@ -78,7 +78,6 @@ def create_remote_connection(remote_info, ssl_enabled):
             return ssh(user=user, password=password, host=ip, port=port)
         except Exception as e:
             log.error("SSH connection failed: %s" % str(e))
-            return None
 
 
 def create_ssh_process(ssh_conn, args):
@@ -95,7 +94,7 @@ def create_local_process(args):
     try:
         if args.debug:
             gdb_script = args.gdb_command if args.gdb_command else ""
-            return gdb.debug(CHALL, gdbscript=gdb_script)
+            return gdb.debug([CHALL], gdbscript=gdb_script)
         elif args.strace:
             return process(["strace", "-o", "strace.out", CHALL])
         else:

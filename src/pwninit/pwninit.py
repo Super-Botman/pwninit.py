@@ -45,7 +45,6 @@ def sort_bins(files: list) -> dict:
     elf = None
 
     for f in files:
-        print(f)
         context.log_level = "error"
         elf = ELF(f, checksec=False)
         context.log_level = "info"
@@ -86,7 +85,7 @@ def fetch_ld(bins: dict[str, list], path: Path):
 def patchelf(bins: dict, path: Path):
     os.system("patchelf --set-rpath %s %s" % (path, bins["challs"][0]))
     os.system("patchelf --set-interpreter  %s %s" %
-              (bins["ld"][0], bins["challs"][0]))
+              (os.path.basename(bins["ld"][0]), bins["challs"][0]))
 
 
 def open_file(path: Path):
@@ -114,13 +113,16 @@ def gen_files(path, bins) -> dict:
     files = {}
 
     files["exploit.py"] = open(templates / "exploit.py", "r").read().format(
-        bins["challs"][0],
-        bins["libc"][0] if bins["libc"] else ""
+        chall="./"+os.path.basename(bins["challs"][0]),
+        libc=f"\nLIBC = \"./{os.path.basename(bins["libc"][0])
+                             }\"" if bins["libc"] else ""
     )
 
     files["notes.md"] = open(templates / "notes.md", "r").read().format(
-        chall, datetime.datetime.now().strftime("%d/%m/%Y"),
-        checksecs, config.get_author()
+        chall=chall,
+        date=datetime.datetime.now().strftime("%d/%m/%Y"),
+        checksecs=checksecs,
+        author=config.get_author()
     )
 
     return files
@@ -170,7 +172,7 @@ def setup_libc_ld(sorted_bins: dict, path: Path) -> bool:
 
     if sorted_bins["libc"] and sorted_bins["ld"]:
         try:
-            patchelf(sorted_bins, path)
+            patchelf(sorted_bins, Path(os.path.abspath(path)))
             log.success("Patched binary with libc and ld")
         except Exception as e:
             log.error("Error patching binary: %s" % str(e))
