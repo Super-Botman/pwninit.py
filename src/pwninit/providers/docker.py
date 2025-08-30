@@ -44,6 +44,3 @@ def run(name, path):
     progress.success("libs extracted")
 
     return path
-
-
-run("", Path("."))
