@@ -2,17 +2,12 @@ from pwn import process, log, gdb, ssh, remote, context, ELF
 import argparse
 import sys
 from pathlib import Path
+import pwninit.utils as pwn_utils
 
 sys.path.insert(0, "./")
 sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
 
-from exploit import exploit, CHALL
-
-# Import pwninit.utils to set module variables
-try:
-    import pwninit.utils as pwn_utils
-except ImportError:
-    pwn_utils = None
+import exploit
 
 NC = 1
 SSH = 2
@@ -71,11 +66,11 @@ def setup_context(args):
     context.terminal = ["kitten", "@launch", "--copy-env", "--cwd", "current"]
 
     try:
-        context.binary = ELF(CHALL)
+        context.binary = ELF(exploit.CHALL)
         return context.binary
     except Exception as e:
         log.warning("Could not load ELF: %s" % str(e))
-        return CHALL
+        return exploit.CHALL
 
 
 def create_remote_connection(remote_info, ssl_enabled):
@@ -99,10 +94,10 @@ def create_remote_connection(remote_info, ssl_enabled):
 def create_ssh_process(ssh_conn, args):
     try:
         if args.debug:
-            return gdb.debug(CHALL, ssh=ssh_conn)
+            return gdb.debug(exploit.CHALL, ssh=ssh_conn)
         else:
             return ssh_conn.system(
-                " ".join(CHALL) if isinstance(CHALL, list) else CHALL
+                " ".join(exploit.CHALL) if isinstance(exploit.CHALL, list) else exploit.CHALL
             )
     except Exception as e:
         log.error("Failed to create SSH process: %s" % str(e))
@@ -112,11 +107,11 @@ def create_local_process(args):
     try:
         if args.debug:
             gdb_script = args.gdb_command if args.gdb_command else ""
-            return gdb.debug([CHALL], gdbscript=gdb_script)
+            return gdb.debug([exploit.CHALL], gdbscript=gdb_script)
         elif args.strace:
-            return process(["strace", "-o", "strace.out", CHALL])
+            return process(["strace", "-o", "strace.out", exploit.CHALL])
         else:
-            return process(CHALL)
+            return process(exploit.CHALL)
     except Exception as e:
         log.error("Failed to create local process: %s" % str(e))
 
@@ -149,15 +144,14 @@ def cli():
     if not p:
         log.error("Failed to create process")
 
-    # Setup pwninit.utils module variables automatically
     if pwn_utils:
         pwn_utils.conn = p
         pwn_utils.elf = elf if isinstance(elf, ELF) else None
-        pwn_utils.binary = elf if isinstance(elf, str) else CHALL
-        pwn_utils.prefix = PREFIX if isinstance(PREFIX, str) else "> "
+        pwn_utils.binary = elf if isinstance(elf, str) else exploit.CHALL
+        pwn_utils.prefix = exploit.PREFIX if hasattr(exploit, "PREFIX") else "> "
 
     try:
-        flag = exploit(p, elf)
+        flag = exploit.exploit(p, elf)
         if flag:
             log.success("flag: %s" % flag)
             save_flag(flag)
