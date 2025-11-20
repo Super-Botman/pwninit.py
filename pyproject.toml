@@ -19,13 +19,12 @@ classifiers = [
 dependencies = [
   "pwntools[pwnlib]",
   "argparse",
-  "docker"
+  "docker",
+  "mako"
 ]
 
-[tool.hatch.build.targets.sdist]
-exclude = [
-  "bin/*.py",
-]
+[tool.hatch.build.targets.wheel]
+packages = ["src/pwninit"]
 
 [project.scripts]
 pwninit = "pwninit.pwninit:cli"

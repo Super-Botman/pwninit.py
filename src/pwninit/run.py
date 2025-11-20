@@ -1,47 +1,63 @@
 from pwn import process, log, gdb, ssh, remote, context, ELF
 import argparse
 import sys
+from pathlib import Path
 
-sys.path.insert(0, './')
+sys.path.insert(0, "./")
+sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
 
+from exploit import exploit, CHALL
+
+# Import pwninit.utils to set module variables
 try:
-    from exploit import exploit, CHALL
-except Exception:
-    log.failure("Cannot found exploit.py file")
-    exit(1)
+    import pwninit.utils as pwn_utils
+except ImportError:
+    pwn_utils = None
 
 NC = 1
 SSH = 2
 
 
 def addr_type(value):
-    if value.split(':')[0] != value and value.split('@')[0] != value:
-        creds, addr = value.split('@')
-        user, password = creds.split(':')
-        ip, port = addr.split(':')
+    if value.split(":")[0] != value and value.split("@")[0] != value:
+        creds, addr = value.split("@")
+        user, password = creds.split(":")
+        ip, port = addr.split(":")
         return SSH, user, password, ip, int(port)
-    elif value.split(':')[0] != value:
-        ip, port = value.split(':')
+    elif value.split(":")[0] != value:
+        ip, port = value.split(":")
         return NC, ip, int(port)
     else:
         raise argparse.ArgumentTypeError(
-            "Invalid remote arg format. Expected 'ip:port' or 'user@ip'.")
+            "Invalid remote arg format. Expected 'ip:port' or 'user@ip'."
+        )
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Runner for pwn exploits.')
-    parser.add_argument('-r', '--remote', action='store', metavar='addr', type=addr_type,
-                        help='run remotely (ip:port for nc and user:password@ip for ssh)')
-    parser.add_argument('--ssl', action='store_true',
-                        help='enable ssl')
-    parser.add_argument('-d', '--debug', action='store_true',
-                        help='enable debug mode')
-    parser.add_argument('-s', '--strace', action='store_true',
-                        help='run with strace and store the strace output into strace.out')
-    parser.add_argument('--gdb-command', action='store', metavar='\'c\'',
-                        help='set a command to run at the start of gdb work only if debug is set')
-    parser.add_argument('-v', '--verbose',
-                        action='store_true', help='verbose mode')
+    parser = argparse.ArgumentParser(description="Runner for pwn exploits.")
+    parser.add_argument(
+        "-r",
+        "--remote",
+        action="store",
+        metavar="addr",
+        type=addr_type,
+        help="run remotely (ip:port for nc and user:password@ip for ssh)",
+    )
+    parser.add_argument("--ssl", action="store_true", help="enable ssl")
+    parser.add_argument("-d", "--debug", action="store_true", help="enable debug mode")
+    parser.add_argument(
+        "-s",
+        "--strace",
+        action="store_true",
+        help="run with strace and store the strace output into strace.out",
+    )
+    parser.add_argument(
+        "--gdb-command",
+        action="store",
+        metavar="'c'",
+        help="set a command to run at the start of gdb work only if debug is set",
+    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="verbose mode")
     args = parser.parse_args()
 
     if args.gdb_command and not args.debug:
@@ -52,7 +68,7 @@ def parse_args():
 
 def setup_context(args):
     context.log_level = "DEBUG" if args.verbose else "INFO"
-    context.terminal = ['kitten', '@launch', '--copy-env', '--cwd', 'current']
+    context.terminal = ["kitten", "@launch", "--copy-env", "--cwd", "current"]
 
     try:
         context.binary = ELF(CHALL)
@@ -85,7 +101,9 @@ def create_ssh_process(ssh_conn, args):
         if args.debug:
             return gdb.debug(CHALL, ssh=ssh_conn)
         else:
-            return ssh_conn.system(" ".join(CHALL) if isinstance(CHALL, list) else CHALL)
+            return ssh_conn.system(
+                " ".join(CHALL) if isinstance(CHALL, list) else CHALL
+            )
     except Exception as e:
         log.error("Failed to create SSH process: %s" % str(e))
 
@@ -130,6 +148,13 @@ def cli():
 
     if not p:
         log.error("Failed to create process")
+
+    # Setup pwninit.utils module variables automatically
+    if pwn_utils:
+        pwn_utils.conn = p
+        pwn_utils.elf = elf if isinstance(elf, ELF) else None
+        pwn_utils.binary = elf if isinstance(elf, str) else CHALL
+        pwn_utils.prefix = PREFIX if isinstance(PREFIX, str) else "> "
 
     try:
         flag = exploit(p, elf)
