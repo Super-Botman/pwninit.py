@@ -2,11 +2,11 @@ from pwn import process, log, gdb, ssh, remote, context, ELF
 import argparse
 import sys
 from pathlib import Path
-import pwninit.utils as pwn_utils
 
 sys.path.insert(0, "./")
 sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
 
+import utils as pwn_utils
 import exploit
 
 NC = 1
@@ -65,12 +65,25 @@ def setup_context(args):
     context.log_level = "DEBUG" if args.verbose else "INFO"
     context.terminal = ["kitten", "@launch", "--copy-env", "--cwd", "current"]
 
+    libc = exploit.LIBC if hasattr(exploit, "LIBC") else None
+    ret = [
+        exploit.CHALL,
+        libc
+    ]
+
     try:
         context.binary = ELF(exploit.CHALL)
-        return context.binary
+        ret[0] = context.binary
     except Exception as e:
         log.warning("Could not load ELF: %s" % str(e))
-        return exploit.CHALL
+
+    if libc != None:
+        try:
+            ret[1] = ELF(libc)
+        except Exception as e:
+            log.warning("Could not load LIBC: %s" % str(e))
+
+    return ret
 
 
 def create_remote_connection(remote_info, ssl_enabled):
@@ -127,7 +140,8 @@ def save_flag(flag):
 
 def cli():
     args = parse_args()
-    elf = setup_context(args)
+    elf, libc = setup_context(args)
+
 
     # Create connection/process
     if args.remote:
@@ -147,11 +161,13 @@ def cli():
     if pwn_utils:
         pwn_utils.conn = p
         pwn_utils.elf = elf if isinstance(elf, ELF) else None
+        pwn_utils.libc = libc if isinstance(libc, ELF) else None
         pwn_utils.binary = elf if isinstance(elf, str) else exploit.CHALL
         pwn_utils.prefix = exploit.PREFIX if hasattr(exploit, "PREFIX") else "> "
+       
 
     try:
-        flag = exploit.exploit(p, elf)
+        flag = exploit.exploit(io=p, elf=elf, libc=libc)
         if flag:
             log.success("flag: %s" % flag)
             save_flag(flag)

@@ -4,10 +4,13 @@ import shutil
 import datetime
 import importlib
 import os
+import sys
 from pathlib import Path
 from pwn import libcdb, ELF, log, context
 from mako.template import Template
-from .config import config
+
+sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
+from config import config
 
 
 def utils_type(value: str) -> list:
