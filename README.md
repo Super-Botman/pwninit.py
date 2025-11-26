@@ -154,6 +154,18 @@ src/pwninit/
 └── templates/      # File templates
 ```
 
+## 📋 TODO
+
+- Add kernel exploitation challenge support
+- Implement configurable default utilities and providers
+- Expand provider ecosystem with additional sources
+- Simplify custom provider and utility development
+- Enhance exploit templates with advanced features
+- Improve terminal integration and display capabilities
+- Add support to different challenge types like args, environment, etc.
+- Handle jails (fuck jails)
+- CTFd provider
+
 ## 🤝 Contributing
 
 1. Fork the repository

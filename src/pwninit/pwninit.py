@@ -102,28 +102,35 @@ def open_file(path: Path):
 def gen_files(path, bins) -> dict:
     pwninit_path = Path(os.path.dirname(os.path.realpath(__file__)))
     templates = pwninit_path / "templates"
-    chall = os.path.basename(path)
-    checksecs = []
-    for b in bins.values():
-        checksecs.append([f"[*] {f}\n" +
-                          ELF(f, checksec=False).checksec(color=False) for f in b])
 
-    checksecs = "\n\n".join(sum(checksecs, []))
+    if bins:
+        chall = os.path.basename(path)
+        checksecs = []
+        for b in bins.values():
+            checksecs.append([f"[*] {f}\n" +
+                              ELF(f, checksec=False).checksec(color=False) for f in b])
+
+        checksecs = "\n\n".join(sum(checksecs, []))
+        chall_path = "./" + os.path.basename(bins["challs"][0])
+        libc = f"\nLIBC = \"./{os.path.basename(bins["libc"][0])
+                               }\"" if bins["libc"] else ""
+    else:
+        chall = ""
+        checksecs = ""
+        chall_path = ""
+        libc = ""
 
     files = {}
-
-    files["exploit.py"] = open(templates / "exploit.py", "r").read().format(
-        chall="./"+os.path.basename(bins["challs"][0]),
-        libc=f"\nLIBC = \"./{os.path.basename(bins["libc"][0])
-                             }\"" if bins["libc"] else ""
-    )
-
     files["notes.md"] = open(templates / "notes.md", "r").read().format(
         chall=chall,
         date=datetime.datetime.now().strftime("%d/%m/%Y"),
         checksecs=checksecs,
         author=config.get_author()
     )
+
+    files["exploit.py"] = open(templates / "exploit.py", "r").read().format(
+        chall=chall_path,
+        libc=libc)
 
     return files
 
@@ -148,13 +155,13 @@ def run_provider(args, path: Path) -> Path:
     except ModuleNotFoundError:
         log.error("Provider '%s' not found" % provider_name)
     except Exception as e:
-        log.error("Error running provider '%s': %s" % (provider_name, str(e)))
+        log.error(f"Error running provider '{provider_name}': {str(e)}")
 
 
-def process_binaries(path: Path) -> dict:
+def process_binaries(path: Path) -> dict | None:
     bins = find_bins(path)
     if len(bins) == 0:
-        log.error("No bins founded in %s " % path)
+        return None
 
     sorted_bins = sort_bins(bins)
     for filename in sorted_bins:
@@ -190,7 +197,7 @@ def run_utilities(args, files: dict, sorted_bins: dict, path: Path) -> dict:
         except ModuleNotFoundError:
             log.error("Utility '%s' not found" % util_name)
         except Exception as e:
-            log.error("Error running utility '%s': %s" % (util_name, str(e)))
+            log.error(f"Error running utility '{util_name}': {str(e)}")
     return files
 
 
@@ -215,20 +222,24 @@ def cli() -> int:
         return 1
 
     sorted_bins = process_binaries(path)
-    if not sorted_bins:
-        return 1
+    if sorted_bins:
 
-    if not setup_libc_ld(sorted_bins, path):
-        return 1
+        if not setup_libc_ld(sorted_bins, path):
+            return 1
+        files = gen_files(path, sorted_bins)
 
-    files = gen_files(path, sorted_bins)
+        files = run_utilities(args, files, sorted_bins, path)
+        if files is None:
+            return 1
 
-    files = run_utilities(args, files, sorted_bins, path)
-    if files is None:
-        return 1
+        if not write_output_files(files, path):
+            return 1
 
-    if not write_output_files(files, path):
-        return 1
+    else:
+        log.info("No binaries found")
+        files = gen_files(path, sorted_bins)
+        if not write_output_files(files, path):
+            return 1
 
     log.success("pwninit completed successfully")
     return 0

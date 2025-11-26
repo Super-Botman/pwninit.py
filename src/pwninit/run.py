@@ -85,7 +85,7 @@ def create_ssh_process(ssh_conn, args):
         if args.debug:
             return gdb.debug(CHALL, ssh=ssh_conn)
         else:
-            return ssh_conn.system(" ".join(CHALL) if isinstance(CHALL, list) else CHALL)
+            return ssh_conn.process(CHALL)
     except Exception as e:
         log.error("Failed to create SSH process: %s" % str(e))
 

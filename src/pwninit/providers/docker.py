@@ -6,25 +6,33 @@ from pwn import log
 from pathlib import Path
 
 
-def extract_lib(container, lib, progress):
+def extract_lib(container, lib, progress, name):
     progress.status("Extracting %s" % lib)
     archive_generator, _ = container.get_archive(lib)
     file_data = b''.join(archive_generator)
 
     tar_data = BytesIO(file_data)
     with tarfile.open(fileobj=tar_data) as tar:
-        tar.extractall(path="./", filter='data')
+        tar.extractall(path=name, filter='data')
 
     progress.status("%s extracted" % lib)
 
 
-def run(name, path):
+def run(_, path):
     client = docker.from_env()
-    image_name = open(path / "Dockerfile",
-                      "r").readline().replace("FROM ", "")[:-1]
+    # Build Docker image from Dockerfile
+    image = f"{os.path.basename(os.getcwd()).lower()}_pwninit"
+
+    p = log.progress("Building image %s" % image)
+    try:
+        client.images.get(image)
+    except docker.errors.ImageNotFound:
+        client.images.build(path=str(path), tag=image)
+
+    p.success("Image %s built" % image)
 
     container = client.containers.create(
-        image_name, command=["tail", "-f", "/dev/null"])
+        image, command=["tail", "-f", "/dev/null"])
     container.start()
 
     libs = container.exec_run("ldd /bin/ls").output.decode()
@@ -36,8 +44,17 @@ def run(name, path):
 
     progress = log.progress("Extracting libs")
 
-    extract_lib(container, lib_dir / "libc.so.6", progress)
-    extract_lib(container, lib_dir / "ld-linux-x86-64.so.2", progress)
+    files = ["libc.so.6", "ld-linux-x86-64.so.2"]
+    for f in files:
+        real_path = container.exec_run(
+            "ls -la %s" % (lib_dir / f)).output.decode()
+
+        if "->" in real_path:
+            real_path = real_path.split("-> ")[-1][:-1]
+        else:
+            real_path = f
+        extract_lib(container, lib_dir / real_path, progress, f)
+
     container.kill()
     container.remove()
 
