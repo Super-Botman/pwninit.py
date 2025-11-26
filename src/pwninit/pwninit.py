@@ -4,13 +4,17 @@ import shutil
 import datetime
 import importlib
 import os
+import sys
 from pathlib import Path
 from pwn import libcdb, ELF, log, context
-from .config import config
+from mako.template import Template
+
+sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
+from config import config
 
 
 def utils_type(value: str) -> list:
-    return sum([value.replace(' ', '').split(',')], [])
+    return sum([value.replace(" ", "").split(",")], [])
 
 
 def provider_type(value: str) -> list:
@@ -24,13 +28,16 @@ def provider_type(value: str) -> list:
 
 
 def find_bins(dir: Path) -> list:
-    files = [os.path.join(dir, f) for f in os.listdir(
-        dir) if os.path.isfile(os.path.join(dir, f))]
+    files = [
+        os.path.join(dir, f)
+        for f in os.listdir(dir)
+        if os.path.isfile(os.path.join(dir, f))
+    ]
 
     binary_files = []
     for file in files:
         magic = open(file, "rb").read(4)
-        if magic == b'\x7fELF':
+        if magic == b"\x7fELF":
             binary_files.append(file)
 
     return binary_files
@@ -51,14 +58,16 @@ def sort_bins(files: list) -> dict:
 
         soname_tag = elf.dynamic_by_tag("DT_SONAME")
 
-        if soname_tag and ("libc.so.0" in soname_tag.soname or
-                           "libc.so.6" in soname_tag.soname):
+        if soname_tag and (
+            "libc.so.0" in soname_tag.soname or "libc.so.6" in soname_tag.soname
+        ):
             bins["libc"].append(f)
 
         elif not elf.statically_linked and (
-                "_dl_tls_setup" in elf.sym or
-                "name_to_handle_at" in elf.sym or
-                "_rtld_global" in elf.sym):
+            "_dl_tls_setup" in elf.sym
+            or "name_to_handle_at" in elf.sym
+            or "_rtld_global" in elf.sym
+        ):
             bins["ld"].append(f)
 
         else:
@@ -74,9 +83,9 @@ def fetch_ld(bins: dict[str, list], path: Path):
         lib_path = libcdb.download_libraries(libc)
         if lib_path is not None:
             lib_path = Path(lib_path)
-            ld_path = lib_path / 'ld-linux-x86-64.so.2'
+            ld_path = lib_path / "ld-linux-x86-64.so.2"
             shutil.copy(ld_path, path)
-            bins["ld"] = [str(path / 'ld-linux-x86-64.so.2')]
+            bins["ld"] = [str(path / "ld-linux-x86-64.so.2")]
             return True
         else:
             return False
@@ -84,63 +93,73 @@ def fetch_ld(bins: dict[str, list], path: Path):
 
 def patchelf(bins: dict, path: Path):
     os.system("patchelf --set-rpath %s %s" % (path, bins["challs"][0]))
-    os.system("patchelf --set-interpreter  %s %s" %
-              (os.path.basename(bins["ld"][0]), bins["challs"][0]))
+    os.system(
+        "patchelf --set-interpreter  %s %s"
+        % (os.path.basename(bins["ld"][0]), bins["challs"][0])
+    )
 
 
 def open_file(path: Path):
     if path.is_file():
         filename = os.path.basename(path)
         overwrite = input(
-            f"Do you want to overwrite the content of {filename} ? [Y,n]: ")
+            f"Do you want to overwrite the content of {filename} ? [Y,n]: "
+        )
         if overwrite.lower() == "n":
             return False
 
     return open(path, "w")
 
-
 def gen_files(path, bins) -> dict:
     pwninit_path = Path(os.path.dirname(os.path.realpath(__file__)))
     templates = pwninit_path / "templates"
+    chall = os.path.basename(path)
+    checksecs = []
+    for b in bins.values():
+        checksecs.append(
+            [f"[*] {f}\n" + ELF(f, checksec=False).checksec(color=False) for f in b]
+        )
 
-    if bins:
-        chall = os.path.basename(path)
-        checksecs = []
-        for b in bins.values():
-            checksecs.append([f"[*] {f}\n" +
-                              ELF(f, checksec=False).checksec(color=False) for f in b])
-
-        checksecs = "\n\n".join(sum(checksecs, []))
-        chall_path = "./" + os.path.basename(bins["challs"][0])
-        libc = f"\nLIBC = \"./{os.path.basename(bins["libc"][0])
-                               }\"" if bins["libc"] else ""
-    else:
-        chall = ""
-        checksecs = ""
-        chall_path = ""
-        libc = ""
+    checksecs = "\n\n".join(sum(checksecs, []))
 
     files = {}
-    files["notes.md"] = open(templates / "notes.md", "r").read().format(
+
+    # Render exploit.py using Mako
+    exploit_template = Template(filename=str(templates / "exploit.py"))
+    files["exploit.py"] = exploit_template.render(
+        chall="./" + os.path.basename(bins["challs"][0]),
+        libc="./" + os.path.basename(bins["libc"][0]) if bins["libc"] else None,
+    )
+
+    # Render notes.md using Mako
+    notes_template = Template(filename=str(templates / "notes.md"))
+    files["notes.md"] = notes_template.render(
         chall=chall,
         date=datetime.datetime.now().strftime("%d/%m/%Y"),
         checksecs=checksecs,
-        author=config.get_author()
+        author=config.get_author(),
     )
-
-    files["exploit.py"] = open(templates / "exploit.py", "r").read().format(
-        chall=chall_path,
-        libc=libc)
 
     return files
 
-
 def parse_args():
-    parser = argparse.ArgumentParser(description='pwninit')
-    parser.add_argument('-p', '--provider', action='store',
-                        metavar='provider', type=provider_type, help='fetch chall from url')
-    parser.add_argument('-u', '--utils', action='store',
-                        metavar='utils', type=utils_type, help='scripts to run on the binary')
+    parser = argparse.ArgumentParser(description="pwninit")
+    parser.add_argument(
+        "-p",
+        "--provider",
+        action="store",
+        metavar="provider",
+        type=provider_type,
+        help="fetch chall from url",
+    )
+    parser.add_argument(
+        "-u",
+        "--utils",
+        action="store",
+        metavar="utils",
+        type=utils_type,
+        help="scripts to run on the binary",
+    )
     return parser.parse_args()
 
 
@@ -150,8 +169,9 @@ def run_provider(args, path: Path) -> Path:
 
     provider_name = args.provider[1]
     try:
-        return importlib.import_module(
-            "pwninit.providers."+provider_name).run("".join(args.provider), path)
+        return importlib.import_module("pwninit.providers." + provider_name).run(
+            "".join(args.provider), path
+        )
     except ModuleNotFoundError:
         log.error("Provider '%s' not found" % provider_name)
     except Exception as e:
@@ -166,8 +186,7 @@ def process_binaries(path: Path) -> dict | None:
     sorted_bins = sort_bins(bins)
     for filename in sorted_bins:
         if sorted_bins[filename]:
-            log.success("%s founded: %s" %
-                        (filename, ", ".join(sorted_bins[filename])))
+            log.success("%s founded: %s" % (filename, ", ".join(sorted_bins[filename])))
     return sorted_bins
 
 
@@ -192,8 +211,9 @@ def run_utilities(args, files: dict, sorted_bins: dict, path: Path) -> dict:
 
     for util_name in args.utils:
         try:
-            files = importlib.import_module(
-                "pwninit.utils."+util_name).run(files, sorted_bins, path)
+            files = importlib.import_module("pwninit.scripts." + util_name).run(
+                files, sorted_bins, path
+            )
         except ModuleNotFoundError:
             log.error("Utility '%s' not found" % util_name)
         except Exception as e:

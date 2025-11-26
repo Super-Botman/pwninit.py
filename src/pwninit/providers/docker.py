@@ -6,61 +6,132 @@ from pwn import log
 from pathlib import Path
 
 
-def extract_lib(container, lib, progress, name):
+def extract_lib(container, lib, progress):
     progress.status("Extracting %s" % lib)
     archive_generator, _ = container.get_archive(lib)
-    file_data = b''.join(archive_generator)
+    file_data = b"".join(archive_generator)
 
     tar_data = BytesIO(file_data)
     with tarfile.open(fileobj=tar_data) as tar:
-        tar.extractall(path=name, filter='data')
+        # Get the first (and only) member from the archive
+        members = tar.getmembers()
+        if members:
+            member = members[0]
+            # Extract to current directory
+            member_file = tar.extractfile(member)
+            if member_file:
+                # Write the file with just the basename (clean name)
+                output_path = Path(os.path.basename(str(lib)))
+                with open(output_path, "wb") as f:
+                    f.write(member_file.read())
+                progress.status("%s extracted to %s" % (lib, output_path))
+            else:
+                progress.failure("Failed to extract file from %s" % lib)
+        else:
+            progress.failure("No files found in archive for %s" % lib)
 
-    progress.status("%s extracted" % lib)
 
-
-def run(_, path):
+def run(name, path):
     client = docker.from_env()
-    # Build Docker image from Dockerfile
-    image = f"{os.path.basename(os.getcwd()).lower()}_pwninit"
 
-    p = log.progress("Building image %s" % image)
+    progress = log.progress("Docker provider")
+
+    # Build the Dockerfile
+    progress.status("Building image")
+    image_tag = f"pwninit-{name}:latest"
+
     try:
-        client.images.get(image)
-    except docker.errors.ImageNotFound:
-        client.images.build(path=str(path), tag=image)
+        image, build_logs = client.images.build(
+            path=str(path), tag=image_tag, rm=True, forcerm=True
+        )
+        # Consume build logs
+        for _ in build_logs:
+            pass
+    except Exception as e:
+        progress.failure(f"Build failed: {str(e)}")
+        raise
 
-    p.success("Image %s built" % image)
-
-    container = client.containers.create(
-        image, command=["tail", "-f", "/dev/null"])
+    # Create and start container
+    progress.status("Starting container")
+    container = client.containers.create(image_tag, command=["tail", "-f", "/dev/null"])
     container.start()
 
-    libs = container.exec_run("ldd /bin/ls").output.decode()
-    lib_dir = [l.split("=>")[-1].split(" ")[1]
-               for l in libs.split("\n") if "libc" in l][0]
-    lib_dir = Path(os.path.dirname(lib_dir))
+    # Find libc path
+    progress.status("Locating libc")
+    common_paths = [
+        "/lib/x86_64-linux-gnu",
+        "/lib64",
+        "/usr/lib/x86_64-linux-gnu",
+        "/usr/lib64",
+        "/lib",
+        "/usr/lib",
+    ]
 
-    log.success("lib dir founded: %s" % lib_dir)
+    libc_path = None
+    ld_path = None
 
-    progress = log.progress("Extracting libs")
+    for common_path in common_paths:
+        result = container.exec_run(
+            ["sh", "-c", f"test -f {common_path}/libc.so.6 && echo found"]
+        )
+        if b"found" in result.output:
+            libc_path = f"{common_path}/libc.so.6"
+            break
 
-    files = ["libc.so.6", "ld-linux-x86-64.so.2"]
-    for f in files:
-        real_path = container.exec_run(
-            "ls -la %s" % (lib_dir / f)).output.decode()
+    if not libc_path:
+        progress.status("Searching filesystem for libc")
+        result = container.exec_run(
+            [
+                "sh",
+                "-c",
+                "find /lib /usr/lib /lib64 /usr/lib64 -name 'libc.so.6' 2>/dev/null | head -1",
+            ]
+        )
+        if result.output and result.exit_code == 0:
+            libc_path = result.output.decode().strip()
 
-        if "->" in real_path:
-            real_path = real_path.split("-> ")[-1][:-1]
-        else:
-            real_path = f
-        extract_lib(container, lib_dir / real_path, progress, f)
+    if not libc_path:
+        progress.failure("Could not locate libc.so.6")
+        raise Exception("Could not locate libc.so.6 in container")
 
+    lib_dir = Path(os.path.dirname(libc_path))
+
+    # Find ld-linux
+    progress.status("Locating ld-linux")
+    ld_names = [
+        "ld-linux-x86-64.so.2",
+        "ld-linux-x86-64.so.*",
+        "ld-linux.so.2",
+        "ld-*.so",
+    ]
+
+    for ld_name in ld_names:
+        result = container.exec_run(
+            ["sh", "-c", f"ls {lib_dir}/{ld_name} 2>/dev/null | head -1"]
+        )
+        if result.output and result.exit_code == 0:
+            ld_path = result.output.decode().strip()
+            if ld_path:
+                break
+
+    if not ld_path:
+        progress.failure("Could not locate ld-linux")
+        raise Exception("Could not locate ld-linux in container")
+
+    # Extract libraries
+    extract_lib(container, libc_path, progress)
+    extract_lib(container, ld_path, progress)
+
+    # Cleanup
+    progress.status("Cleaning up")
     container.kill()
     container.remove()
 
-    progress.success("libs extracted")
+    try:
+        client.images.remove(image_tag, force=True)
+    except Exception:
+        pass
+
+    progress.success("Done")
 
     return path
-
-
-run("", Path("."))

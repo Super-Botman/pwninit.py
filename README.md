@@ -2,7 +2,7 @@
 
 A comprehensive Python toolkit for CTF binary exploitation challenges that streamlines the setup and execution process.
 
-## 🚀 Features
+## Features
 
 - **Automated binary analysis** - Automatically detects and categorizes ELF binaries (challenge, libc, linker)
 - **Library management** - Fetches matching libc and linker libraries using libcdb
@@ -13,7 +13,7 @@ A comprehensive Python toolkit for CTF binary exploitation challenges that strea
 - **Provider system** - Extensible system for fetching challenges from various sources
 - **Utility plugins** - Modular utilities for common exploitation tasks
 
-## 📦 Installation
+## Installation
 
 ### Prerequisites
 - Python 3.8+
@@ -34,7 +34,7 @@ pipx install dist/pwninit-0.0.1-py3-none-any.whl
 pip install dist/pwninit-0.0.1-py3-none-any.whl
 ```
 
-## 🛠 Usage
+## Usage
 
 ### pwninit - Challenge Setup
 
@@ -47,8 +47,11 @@ pwninit
 # Fetch challenge from provider
 pwninit -p https://www.root-me.org/fr/Challenges/App-Systeme/ELF-x86-Stack-buffer-overflow-basic-1
 
+# Fetch libc from docker provider
+pwninit -p docker
+
 # Run utilities during setup  
-pwninit -u menu,docker
+pwninit -u menu
 ```
 
 **Options:**
@@ -109,7 +112,22 @@ run -r target.com:443 --ssl
 - `-v, --verbose` - Enable verbose logging
 - `--ssl` - Use SSL/TLS for remote connections
 
-## 📁 Generated Files
+### exploit.py - Exploits development
+
+You can use a variety of helpers from `pwninit.utils`:
+```py
+from pwn import *
+from pwninit.utils import *
+
+CHALL = "./bin"
+LIBC = "./libc.so.6"
+
+def exploit(io, elf, libc=Null):
+
+```
+
+
+## Generated Files
 
 pwninit creates the following files:
 
@@ -117,40 +135,49 @@ pwninit creates the following files:
 - **notes.md** - Documentation template with checksec output and metadata
 - **Patched binary** - Original binary patched with correct libc/linker
 
-## 🔧 Providers
+## Providers
 
 Extend pwninit with custom challenge sources:
 
 ```python
 # src/pwninit/providers/custom.py
-def run(url, path):
-    # Download and extract challenge
+# args: arguments passed to pwninit
+# path: the actual path
+def run(args, path):
+    # Setup other things for the challenge (libc, fetching challs from rootme, ...)
     return challenge_path
 ```
 
-## 🛠 Utilities  
+Built-in providers:
+- **docker** - Build the image and fetch libc
+- **rootme** - Fetch the bin from the ssh and libc
+
+## Utilities  
 
 Add custom utilities for common tasks:
 
 ```python  
 # src/pwninit/utils/custom.py
+# files: generated files from templates
+# bins: binary files found in the path
+# path: the actual path
 def run(files, bins, path):
-    # Modify generated files or perform setup tasks
+    # Edit exploit.py/notes.md or add files to complete the setup (kernel challenges, menu interaction functions, ...)
     return files
 ```
 
 Built-in utilities:
 - **menu** - Generate menu interaction functions
-- **docker** - Set up Docker environment for libc testing
 
-## 🏗 Project Structure
+## Project Structure
 
 ```
 src/pwninit/
 ├── pwninit.py      # Main challenge setup logic
 ├── run.py          # Exploit execution runner  
+├── utils.py        # Utils for easier exploit dev  
 ├── providers/      # Challenge source providers
-├── utils/          # Setup utilities
+├── scripts/        # Setup utilities
 └── templates/      # File templates
 ```
 
@@ -165,24 +192,3 @@ src/pwninit/
 - Add support to different challenge types like args, environment, etc.
 - Handle jails (fuck jails)
 - CTFd provider
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 👤 Author
-
-- **0xb0tm4n** - [@0xb0tm4n](https://github.com/Super-Botman)
-
-## 🙏 Acknowledgments
-
-- [pwntools](https://github.com/Gallopsled/pwntools) - The Swiss army knife of CTF tools
-- [libcdb](https://libc.rip/) - Libc database and download service
