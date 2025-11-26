@@ -10,7 +10,7 @@ from pwn import libcdb, ELF, log, context
 from mako.template import Template
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
-from config import config
+from .config import config
 
 
 def utils_type(value: str) -> list:
