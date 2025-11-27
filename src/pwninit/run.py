@@ -12,19 +12,25 @@ import exploit
 NC = 1
 SSH = 2
 
-
 def addr_type(value):
-    if value.split(":")[0] != value and value.split("@")[0] != value:
-        creds, addr = value.split("@")
-        user, password = creds.split(":")
-        ip, port = addr.split(":")
-        return SSH, user, password, ip, int(port)
-    elif value.split(":")[0] != value:
-        ip, port = value.split(":")
+    if "@" in value:
+        creds, addr = value.split("@", 1)
+        if ":" in creds:
+            user, password = creds.split(":", 1)
+        else:
+            user, password = creds, None
+        if ":" in addr:
+            ip, port = addr.split(":", 1)
+            return SSH, user, password, ip, int(port)
+        else:
+            ip = addr
+            return SSH, user, password, ip, 22
+    elif ":" in value:
+        ip, port = value.split(":", 1)
         return NC, ip, int(port)
     else:
         raise argparse.ArgumentTypeError(
-            "Invalid remote arg format. Expected 'ip:port' or 'user@ip'."
+            "Invalid remote format. Expected 'ip:port', 'user@ip', or 'user:pass@ip:port'."
         )
 
 
