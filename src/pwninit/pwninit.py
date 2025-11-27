@@ -186,7 +186,7 @@ def process_binaries(path: Path) -> dict | None:
     sorted_bins = sort_bins(bins)
     for filename in sorted_bins:
         if sorted_bins[filename]:
-            log.success("%s founded: %s" % (filename, ", ".join(sorted_bins[filename])))
+            log.success("%s found: %s" % (filename, ", ".join(sorted_bins[filename])))
     return sorted_bins
 
 

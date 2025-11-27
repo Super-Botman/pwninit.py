@@ -44,6 +44,12 @@ def parse_args():
         type=addr_type,
         help="run remotely (ip:port for nc and user:password@ip for ssh)",
     )
+    parser.add_argument(
+        '--path',
+        action="store",
+        metavar="'/challenge'",
+        help="set a path where challenge is located when using remote ssh"
+    )
     parser.add_argument("--ssl", action="store_true", help="enable ssl")
     parser.add_argument("-d", "--debug", action="store_true", help="enable debug mode")
     parser.add_argument(
@@ -63,6 +69,9 @@ def parse_args():
 
     if args.gdb_command and not args.debug:
         log.error("--gdb-command can only be used with --debug")
+
+    if args.path and not args.remote:
+        log.error("--path can only be used with -r")
 
     return args
 
@@ -111,11 +120,12 @@ def create_remote_connection(remote_info, ssl_enabled):
 
 
 def create_ssh_process(ssh_conn, args):
+    chall_path = str(Path(args.path) / exploit.CHALL)
     try:
         if args.debug:
-            return gdb.debug(exploit.CHALL, ssh=ssh_conn)
+            return gdb.debug(chall_path, ssh=ssh_conn)
         else:
-            return ssh_conn.process(CHALL)
+            return ssh_conn.process(chall_path)
     except Exception as e:
         log.error("Failed to create SSH process: %s" % str(e))
 
@@ -140,6 +150,18 @@ def save_flag(flag):
         log.success("Flag saved to file")
     except Exception as e:
         log.warning("Could not save flag to file: %s" % str(e))
+
+    # Rename the folder containing the exploit by appending a checkmark
+    try:
+        cwd = Path.cwd()
+        if not cwd.name.endswith("✅"):
+            new_path = cwd.parent / (cwd.name + "✅")
+            if new_path.exists():
+                log.warning("Cannot rename folder: target exists")
+            else:
+                cwd.rename(new_path)
+    except Exception as e:
+        log.warning("Could not rename folder: %s" % str(e))
 
 
 def cli():
