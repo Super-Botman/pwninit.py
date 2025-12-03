@@ -27,7 +27,7 @@ def resolve(symbol, base=None):
     return addr
 
 
-def check_leaks(conn=None, elf=None, libc=None):
+def check_leaks(leak, conn=None, elf=None, libc=None):
     """Check if leaked addresses match actual addresses"""
     conn = conn or globals().get("conn")
     elf = elf or globals().get("elf")

@@ -158,7 +158,7 @@ def parse_args():
         action="store",
         metavar="utils",
         type=utils_type,
-        help="scripts to run on the binary",
+        help="utils to run on the binary",
     )
     return parser.parse_args()
 
@@ -211,7 +211,7 @@ def run_utilities(args, files: dict, sorted_bins: dict, path: Path) -> dict:
 
     for util_name in args.utils:
         try:
-            files = importlib.import_module("pwninit.scripts." + util_name).run(
+            files = importlib.import_module("pwninit.utils." + util_name).run(
                 files, sorted_bins, path
             )
         except ModuleNotFoundError:

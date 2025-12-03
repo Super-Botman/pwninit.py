@@ -181,7 +181,7 @@ src/pwninit/
 └── templates/      # File templates
 ```
 
-## 📋 TODO
+## TODO
 
 - Add kernel exploitation challenge support
 - Implement configurable default utilities and providers
