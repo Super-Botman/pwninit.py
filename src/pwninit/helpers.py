@@ -1,4 +1,5 @@
 from pwn import *
+import re
 import pwn
 
 
@@ -70,6 +71,19 @@ class PwnContext:
                 prefix = prefix.encode()
             drop = kwargs.pop("drop", True)
             return r.recvuntil(prefix, drop=drop, **kwargs)
+
+    def ru(self, u):
+        return recv(u)
+
+    def rl(self):
+        return recv('\n')
+
+    def rln(self, n):
+        lines = []
+        for _ in range(n):
+            lines.append(recv('\n'))
+        return lines        
+
         
     def safelink_bf64(self, ptr):
         fd = 0
@@ -124,7 +138,7 @@ class PwnContext:
                 continue
             real = getattr(conn, f"{name}_mapping")().address
             if leak != real:
-                log.info(
+                info(
                     f"{name} : leak = {leak:#x}, real = {real:#x}, diff = {leak - real:#x}"
                 )
 
@@ -143,7 +157,7 @@ class PwnContext:
             rop.raw(rop.ret.address)
         for func, params in chain.items():
             rop.call(func, params)
-        log.info(f"ROP :\n{rop.dump()}")
+        info(f"ROP :\n{rop.dump()}")
         return rop.chain()
 
     def find_offset(self, data=cyclic(1000)):
@@ -155,7 +169,7 @@ class PwnContext:
         self.offset = cyclic_find(core.fault_addr)
         self.conn.close()
         self.conn = None
-        log.info(f"{self.offset = }")
+        info(f"{self.offset = }")
 
     def bof(self, data, **kwargs):
         if self.offset is None:
@@ -208,7 +222,7 @@ class PwnContext:
         payload = "A" * context.bytes + ".%p" * n
         self.send(payload)
         output = self.recv().split(".")
-        log.info(f"format string : {output}")
+        info(f"format string : {output}")
         return output.index("0x" + "41" * context.bytes)
 
     def safelink(self, addr, ptr):

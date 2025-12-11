@@ -192,3 +192,4 @@ src/pwninit/
 - Add support to different challenge types like args, environment, etc.
 - Handle jails (fuck jails)
 - CTFd provider
+- Add option in run to directly use farm for ADs
