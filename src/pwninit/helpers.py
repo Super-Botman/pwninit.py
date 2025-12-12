@@ -78,6 +78,10 @@ class PwnContext:
     def rl(self):
         return recv('\n')
 
+    def rla(self, d):
+        self.ru(d)
+        return rl()
+        
     def rln(self, n):
         lines = []
         for _ in range(n):
@@ -97,12 +101,7 @@ class PwnContext:
 
     def printx(self, **kwargs):
         for k, v in kwargs.items():
-            success("%s: %#x" % (k, v))
-
-    def hexdump(self, data, s=context.word_size//8):
-        idx_max = ceil(log(len(data)/s, 16))
-        for i, c in enumerate(sliced(data, s)):
-            info(f"%0{idx_max}x: %#0{2*s+2}x" % (i, u64(c)))
+            success("%s: %#x" % (k, v))  
 
     def resolve(self, symbol, base=None):
         """Resolve a symbol to an address, with optional offset notation (e.g., 'main+0x10')"""
@@ -120,27 +119,54 @@ class PwnContext:
             addr = base.sym[symbol]
         return addr
 
-    def check_leaks(self, leak, conn=None, elf=None, libc=None):
-        """Check if leaked addresses match actual addresses"""
-        conn = conn or self.conn
-        elf = elf or self.elf
-        libc = libc or self.libc
+    def hexdump(self, data, s=context.word_size//8):
+        idx_max = ceil(log(len(data)/s, 16))
+        for i, c in enumerate(sliced(data, s)):
+            info(f"%0{idx_max}x: %#0{2*s+2}x" % (i, u64(c)))
+    
+    def leak(self, leak, leaked=0):
+        start = leak.find(b'0x')
+        end = 2
+        if start > 0:
+            leak = leak[start:]
+            for i in leak[2:]:
+                try: int(chr(i), 16); end += 1
+                except: break
+            leak = leak[:end]
+            leak = int(leak, 16)
+        else:
+            len = int(context.bits/8)
+            leak.ljust(len, b'\x00')[:len]
+            leak = unpack(leak, len)
 
-        names = ["elf", "libc", "stack", "heap"]
-        leaks = [
-            elf.address if elf else None,
-            libc.address if libc else None,
-            getattr(self, "stack", None),
-            getattr(self, "heap", None),
-        ]
-        for name, leak in zip(names, leaks):
-            if not leak:
-                continue
-            real = getattr(conn, f"{name}_mapping")().address
-            if leak != real:
-                info(
-                    f"{name} : leak = {leak:#x}, real = {real:#x}, diff = {leak - real:#x}"
-                )
+        leak -= leaked
+        self.check_leaks(leak)
+        return leak
+
+    
+    def check_leaks(self, leak):
+        """Check if leaked addresses match actual addresses"""
+        for m in self.conn.maps():
+            if m.start <= leak <= m.end:
+                base = 0
+                
+                if self.elf.path == m.path:
+                    name = "elf"
+                    base = self.conn.elf_mapping().address
+                elif self.libc.path == m.path:
+                    name = "libc"
+                    base = self.conn.libc_mapping().address
+                else:
+                    name = m.path[1:-1]
+                    base = getattr(self.conn, f'{name}_mapping')().address
+
+                if base > 0 and leak != base:
+                    info(f"{name}: leak = {leak:#x}, base = {base:#x}, diff = {leak - base}")
+                    if getattr(self, name, False): getattr(self, name).address = base
+                else:
+                    info(f"{name}: leak = {leak:#x}")
+
+
 
     def ropchain(self, chain, ret=True, elf=None, libc=None):
         """Build a ROP chain from a dictionary of {function: [args]}"""
@@ -262,9 +288,14 @@ sa = ctx.sa
 sl = ctx.sl
 send = ctx.send
 recv = ctx.recv
+ru = ctx.ru
+rl = ctx.rl
+rln = ctx.rl
+rla = ctx.rla
 safelink_bf64 = ctx.safelink_bf64
 printx = ctx.printx
 hexdump = ctx.hexdump
+leak = ctx.leak
 resolve = ctx.resolve
 check_leaks = ctx.check_leaks
 ropchain = ctx.ropchain

@@ -187,9 +187,9 @@ src/pwninit/
 - Implement configurable default utilities and providers
 - Expand provider ecosystem with additional sources
 - Simplify custom provider and utility development
-- Enhance exploit templates with advanced features
 - Improve terminal integration and display capabilities
 - Add support to different challenge types like args, environment, etc.
 - Handle jails (fuck jails)
 - CTFd provider
 - Add option in run to directly use farm for ADs
+- Add option to run and debug in docker
