@@ -1,7 +1,6 @@
 from pwn import *
-import re
 import pwn
-
+import re
 
 class PwnContext:    
     def __init__(self, conn, elf, libc, binary, prefix, offset, canary):
@@ -264,10 +263,6 @@ class PwnContext:
     def binsh(self):
         return next(self.libc.search(b"/bin/sh\0"))
 
-    def reconnect(self):
-        # self.conn.close()
-        print(self.conn)
-
 # Global instance
 ctx = None
 
@@ -320,7 +315,6 @@ ptr_demangle = lambda *a, **k: (_require_ctx(), ctx.ptr_demangle(*a, **k))[1]
 ptr_cookie = lambda *a, **k: (_require_ctx(), ctx.ptr_cookie(*a, **k))[1]
 
 binsh = lambda *a, **k: (_require_ctx(), ctx.binsh(*a, **k))[1]
-reconnect = lambda *a, **k: (_require_ctx(), ctx.reconnect(*a, **k))[1]
 
 # Utility functions
 u64 = lambda d: pwn.u64(d.ljust(8, b"\0")[:8])
