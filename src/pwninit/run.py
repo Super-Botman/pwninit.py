@@ -80,24 +80,21 @@ def setup_context(args):
     context.terminal = ["kitten", "@launch", "--copy-env", "--cwd", "current"]
 
     libc = exploit.LIBC if hasattr(exploit, "LIBC") else None
-    ret = [
-        exploit.CHALL,
-        libc
-    ]
 
     try:
         context.binary = ELF(exploit.CHALL)
-        ret[0] = context.binary
     except Exception as e:
         log.warning("Could not load ELF: %s" % str(e))
 
-    if libc != None:
+    if libc is None:
+        libc = context.binary.libc
+    else:
         try:
-            ret[1] = ELF(libc)
+            libc = ELF(libc)
         except Exception as e:
             log.warning("Could not load LIBC: %s" % str(e))
 
-    return ret
+    return context.binary, libc
 
 def save_flag(flag):
     try:
