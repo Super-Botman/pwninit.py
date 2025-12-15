@@ -264,45 +264,63 @@ class PwnContext:
     def binsh(self):
         return next(self.libc.search(b"/bin/sh\0"))
 
-    def getLibc(self):
-        return self.libc
+    def reconnect(self):
+        # self.conn.close()
+        print(self.conn)
 
-
-# Global instance for backward compatibility
+# Global instance
 ctx = None
 
-# Standalone functions that delegate to global context
-getb = ctx.getb
-getr = ctx.getr
-prompt = ctx.prompt
-sla = ctx.sla
-sa = ctx.sa
-sl = ctx.sl
-send = ctx.send
-recv = ctx.recv
-ru = ctx.ru
-rl = ctx.rl
-rln = ctx.rl
-rla = ctx.rla
-safelink_bf64 = ctx.safelink_bf64
-printx = ctx.printx
-hexdump = ctx.hexdump
-leak = ctx.leak
-resolve = ctx.resolve
-check_leaks = ctx.check_leaks
-ropchain = ctx.ropchain
-find_offset = ctx.find_offset
-bof = ctx.bof
-ret2shellcode = ctx.ret2shellcode
-ret2win = ctx.ret2win
-ret2libc = ctx.ret2libc
-ret2plt = ctx.ret2plt
-format_string = ctx.format_string
-safelink = ctx.safelink
-ptr_mangle = ctx.ptr_mangle
-ptr_demangle = ctx.ptr_demangle
-ptr_cookie = ctx.ptr_cookie
-binsh = ctx.binsh
+def set_ctx(new_ctx: PwnContext):
+    global ctx
+    ctx = new_ctx
+
+def _require_ctx():
+    if ctx is None:
+        raise RuntimeError("PwnContext not initialized (call set_ctx first)")
+
+getb = lambda *a, **k: (_require_ctx(), ctx.getb(*a, **k))[1]
+getr = lambda *a, **k: (_require_ctx(), ctx.getr(*a, **k))[1]
+
+prompt = lambda *a, **k: (_require_ctx(), ctx.prompt(*a, **k))[1]
+
+sla = lambda *a, **k: (_require_ctx(), ctx.sla(*a, **k))[1]
+sa  = lambda *a, **k: (_require_ctx(), ctx.sa(*a, **k))[1]
+sl  = lambda *a, **k: (_require_ctx(), ctx.sl(*a, **k))[1]
+send = lambda *a, **k: (_require_ctx(), ctx.send(*a, **k))[1]
+
+recv = lambda *a, **k: (_require_ctx(), ctx.recv(*a, **k))[1]
+ru   = lambda *a, **k: (_require_ctx(), ctx.ru(*a, **k))[1]
+rl   = lambda *a, **k: (_require_ctx(), ctx.rl(*a, **k))[1]
+rla  = lambda *a, **k: (_require_ctx(), ctx.rla(*a, **k))[1]
+rln  = lambda *a, **k: (_require_ctx(), ctx.rln(*a, **k))[1]
+
+safelink_bf64 = lambda *a, **k: (_require_ctx(), ctx.safelink_bf64(*a, **k))[1]
+printx = lambda *a, **k: (_require_ctx(), ctx.printx(*a, **k))[1]
+hexdump = lambda *a, **k: (_require_ctx(), ctx.hexdump(*a, **k))[1]
+
+leak = lambda *a, **k: (_require_ctx(), ctx.leak(*a, **k))[1]
+resolve = lambda *a, **k: (_require_ctx(), ctx.resolve(*a, **k))[1]
+check_leaks = lambda *a, **k: (_require_ctx(), ctx.check_leaks(*a, **k))[1]
+
+ropchain = lambda *a, **k: (_require_ctx(), ctx.ropchain(*a, **k))[1]
+find_offset = lambda *a, **k: (_require_ctx(), ctx.find_offset(*a, **k))[1]
+bof = lambda *a, **k: (_require_ctx(), ctx.bof(*a, **k))[1]
+
+ret2shellcode = lambda *a, **k: (_require_ctx(), ctx.ret2shellcode(*a, **k))[1]
+ret2win = lambda *a, **k: (_require_ctx(), ctx.ret2win(*a, **k))[1]
+ret2libc = lambda *a, **k: (_require_ctx(), ctx.ret2libc(*a, **k))[1]
+ret2plt = lambda *a, **k: (_require_ctx(), ctx.ret2plt(*a, **k))[1]
+
+format_string = lambda *a, **k: (_require_ctx(), ctx.format_string(*a, **k))[1]
+
+safelink = lambda *a, **k: (_require_ctx(), ctx.safelink(*a, **k))[1]
+ptr_mangle = lambda *a, **k: (_require_ctx(), ctx.ptr_mangle(*a, **k))[1]
+ptr_demangle = lambda *a, **k: (_require_ctx(), ctx.ptr_demangle(*a, **k))[1]
+ptr_cookie = lambda *a, **k: (_require_ctx(), ctx.ptr_cookie(*a, **k))[1]
+
+binsh = lambda *a, **k: (_require_ctx(), ctx.binsh(*a, **k))[1]
+reconnect = lambda *a, **k: (_require_ctx(), ctx.reconnect(*a, **k))[1]
 
 # Utility functions
 u64 = lambda d: pwn.u64(d.ljust(8, b"\0")[:8])

@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, "./")
 sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
 
-from pwninit.helpers import ctx, PwnContext
+from pwninit_test import set_ctx, PwnContext
 import exploit
 
 NC = 1
@@ -189,7 +189,7 @@ def cli():
     libc = libc if isinstance(libc, ELF) else None
     binary = elf if isinstance(elf, str) else exploit.CHALL
     prefix = exploit.PREFIX if hasattr(exploit, "PREFIX") else "> "
-    ctx = PwnContext(p, elf, libc, binary, prefix)
+    set_ctx(PwnContext(p, elf, libc, binary, prefix, None, None))
 
     try:
         flag = exploit.exploit(io=p, elf=elf, libc=libc)
@@ -202,3 +202,5 @@ def cli():
         log.error("Exploit failed: %s" % str(e))
 
     return 0
+
+cli()
