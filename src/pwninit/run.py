@@ -51,6 +51,7 @@ def parse_args():
     )
     parser.add_argument("--ssl", action="store_true", help="enable ssl")
     parser.add_argument("-d", "--debug", action="store_true", help="enable debug mode")
+    parser.add_argument("-a", "--attach", action="store_true", help="enable debug mode (gdb attach)")
     parser.add_argument(
         "-s",
         "--strace",
@@ -66,9 +67,11 @@ def parse_args():
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose mode")
     args = parser.parse_args()
 
-    if args.gdb_command and not args.debug:
+    if args.gdb_command and not args.debug and not args.attach:
         log.error("--gdb-command can only be used with --debug")
-
+    if args.debug and args.attach:
+        log.error("--debug and --attach are incompatible")
+        
     if args.path and not args.remote:
         log.error("--path can only be used with -r")
 
@@ -77,7 +80,7 @@ def parse_args():
 
 def setup_context(args):
     context.log_level = "DEBUG" if args.verbose else "INFO"
-    context.terminal = ["kitten", "@launch", "--copy-env", "--cwd", "current"]
+    # context.terminal = ["kitten", "@launch", "--copy-env", "--cwd", "current"]
 
     libc = exploit.LIBC if hasattr(exploit, "LIBC") else None
 

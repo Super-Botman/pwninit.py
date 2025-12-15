@@ -1,4 +1,4 @@
-from pwn import process, log, gdb, ssh, remote, context, ELF
+from pwn import process, log, gdb, ssh, remote, context, ELF, pause
 from pathlib import Path
 
 NC = 1
@@ -42,33 +42,39 @@ class IOContext:
 
     def __create_local_process(self):
         try:
+            gdb_script = self.args.gdb_command if self.args.gdb_command else ""
             if self.args.debug:
-                gdb_script = self.args.gdb_command if self.args.gdb_command else ""
                 return gdb.debug([self.chall], gdbscript=gdb_script)
             elif self.args.strace:
                 return process(["strace", "-o", "strace.out", self.chall])
             else:
-                return process(self.chall)
+                p = process(self.chall)
+                if self.args.attach:
+                    gdb.attach(p, gdbscript=gdb_script)
+                    log.info("Attached gdb")
+                    pause()
+                return p
         except Exception as e:
             log.error("Failed to create local process: %s" % str(e))
 
     @property
     def io(self):
-        if self.args.remote:
-            if self.args.remote[0] == SSH:
-                self.ssh_conn = self.__create_remote_connection()
-                if not self.ssh_conn:
-                    return 1
-                io = self.__create_ssh_process()
+        if not self._io:
+            if self.args.remote:
+                if self.args.remote[0] == SSH:
+                    self.ssh_conn = self.__create_remote_connection()
+                    if not self.ssh_conn:
+                        return 1
+                    io = self.__create_ssh_process()
+                else:
+                    io = self.__create_remote_connection()
             else:
-                io = self.__create_remote_connection()
-        else:
-            io = self.__create_local_process()
+                io = self.__create_local_process()
 
-        if not io:
-            log.error("Failed to create process")
+            if not io:
+                log.error("Failed to create process")
 
-        self._io = io
+            self._io = io
         return self._io
 
     @io.setter
