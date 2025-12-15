@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, "./")
 sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
 
-import pwninit.helpers as pwn_helpers
+from pwninit.helpers import ctx, PwnContext
 import exploit
 
 NC = 1
@@ -184,12 +184,12 @@ def cli():
     if not p:
         log.error("Failed to create process")
 
-    if pwn_helpers:
-        pwn_helpers.ctx.conn = p
-        pwn_helpers.ctx.elf = elf if isinstance(elf, ELF) else None
-        pwn_helpers.ctx.libc = libc if isinstance(libc, ELF) else None
-        pwn_helpers.ctx.binary = elf if isinstance(elf, str) else exploit.CHALL
-        pwn_helpers.ctx.prefix = exploit.PREFIX if hasattr(exploit, "PREFIX") else "> "
+
+    elf = elf if isinstance(elf, ELF) else None
+    libc = libc if isinstance(libc, ELF) else None
+    binary = elf if isinstance(elf, str) else exploit.CHALL
+    prefix = exploit.PREFIX if hasattr(exploit, "PREFIX") else "> "
+    ctx = PwnContext(p, elf, libc, binary, prefix)
 
     try:
         flag = exploit.exploit(io=p, elf=elf, libc=libc)

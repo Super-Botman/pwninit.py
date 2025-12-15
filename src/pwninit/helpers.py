@@ -3,17 +3,15 @@ import re
 import pwn
 
 
-class PwnContext:
-    """Context manager for pwn challenge state"""
-    
-    def __init__(self):
-        self.conn = None
-        self.elf = None
-        self.libc = None
-        self.binary = None
-        self.prefix = None
-        self.offset = None
-        self.canary = None
+class PwnContext:    
+    def __init__(self, conn, elf, libc, binary, prefix, offset, canary):
+        self.conn = conn
+        self.elf = elf
+        self.libc = libc
+        self.binary = binary
+        self.prefix = prefix
+        self.offset = offset
+        self.canary = canary
     
     def getb(self, d, a, b):
         a_ = d.find(a)
@@ -266,18 +264,12 @@ class PwnContext:
     def binsh(self):
         return next(self.libc.search(b"/bin/sh\0"))
 
+    def getLibc(self):
+        return self.libc
+
 
 # Global instance for backward compatibility
-ctx = PwnContext()
-
-# Export instance attributes for compatibility with existing code
-conn = property(lambda: ctx.conn)
-elf = property(lambda: ctx.elf)
-libc = property(lambda: ctx.libc)
-binary = property(lambda: ctx.binary)
-prefix = property(lambda: ctx.prefix)
-offset = property(lambda: ctx.offset)
-canary = property(lambda: ctx.canary)
+ctx = None
 
 # Standalone functions that delegate to global context
 getb = ctx.getb
