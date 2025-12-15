@@ -2,12 +2,10 @@ from pwn import log, context, ELF
 import argparse
 import sys
 from pathlib import Path
+import pwninit.helpers as helpers
+import pwninit.io as io
 
 sys.path.insert(0, "./")
-sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
-
-import pwninit_test.helpers as helpers
-import pwninit_test.io as io
 import exploit
 
 NC = 1
@@ -144,5 +142,3 @@ def cli():
         log.error("Exploit failed: %s" % str(e))
 
     return 0
-
-cli()
