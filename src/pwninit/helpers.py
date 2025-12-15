@@ -132,9 +132,9 @@ class PwnContext:
             leak = leak[:end]
             leak = int(leak, 16)
         else:
-            len = int(context.bits/8)
-            leak.ljust(len, b'\x00')[:len]
-            leak = unpack(leak, len)
+            len = context.bits//8
+            leak = leak.ljust(len, b'\x00')[:len]
+            leak = unpack(leak, context.bits)
 
         leak -= leaked
         self.check_leaks(leak)
@@ -179,9 +179,23 @@ class PwnContext:
         if elfs and ret:
             rop.raw(rop.ret.address)
         for func, params in chain.items():
-            rop.call(func, params)
+            if '+' in func:
+                f = func.split('+')
+                func = resolve(f[0])+int(f[1])
+            if type(params) != dict:
+                rop.call(func, params)
+            else:
+                for value, name in rop.setRegisters(params):
+                    if type(name) == pwnlib.rop.gadgets.Gadget:
+                        rop.raw(name)
+                    else:
+                        rop.raw(value)
+                rop.call(func)
+
+        rop.raw(rop.ret.address)
         info(f"ROP :\n{rop.dump()}")
         return rop.chain()
+
 
     def find_offset(self, data=cyclic(1000)):
         context.delete_corefiles = True

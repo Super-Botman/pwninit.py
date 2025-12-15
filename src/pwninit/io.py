@@ -10,32 +10,8 @@ class IOContext:
         self.chall = chall
         self.ssh_conn = None
         self._io = None
-
-    @property
-    def io(self):
-        if self.args.remote:
-            if self.args.remote[0] == SSH:
-                self.ssh_conn = self.create_remote_connection()
-                if not self.ssh_conn:
-                    return 1
-                io = self.create_ssh_process()
-            else:
-                io = self.create_remote_connection()
-        else:
-            io = self.create_local_process()
-
-        if not io:
-            log.error("Failed to create process")
-
-        self._io = io
-        return self._io
-
-    @io.setter
-    def io(self, io):
-        return self._io
-
-
-    def create_remote_connection(self):
+    
+    def __create_remote_connection(self):
         conn_type = self.args.remote[0]
 
         if conn_type == NC:
@@ -53,7 +29,7 @@ class IOContext:
                 log.error("SSH connection failed: %s" % str(e))
 
 
-    def create_ssh_process(self):
+    def __create_ssh_process(self):
         chall_path = str(Path(self.args.path) / self.chall)
         try:
             if self.args.debug:
@@ -64,20 +40,46 @@ class IOContext:
             log.error("Failed to create SSH process: %s" % str(e))
 
 
-    def create_local_process(self):
+    def __create_local_process(self):
         try:
             if self.args.debug:
                 gdb_script = self.args.gdb_command if self.args.gdb_command else ""
                 return gdb.debug([self.chall], gdbscript=gdb_script)
             elif self.args.strace:
-                return process(["strace", "-o", "strace.out", exploit.CHALL])
+                return process(["strace", "-o", "strace.out", self.chall])
             else:
                 return process(self.chall)
         except Exception as e:
             log.error("Failed to create local process: %s" % str(e))
 
+    @property
+    def io(self):
+        if self.args.remote:
+            if self.args.remote[0] == SSH:
+                self.ssh_conn = self.__create_remote_connection()
+                if not self.ssh_conn:
+                    return 1
+                io = self.__create_ssh_process()
+            else:
+                io = self.__create_remote_connection()
+        else:
+            io = self.__create_local_process()
+
+        if not io:
+            log.error("Failed to create process")
+
+        self._io = io
+        return self._io
+
+    @io.setter
+    def io(self, io):
+        return self._io
+
     def reconnect(self):
         self._io.close()
+        return self.io
+
+    def connect(self):
         return self.io
 
 
@@ -92,3 +94,4 @@ def _require_ctx():
         raise RuntimeError("PwnContext not initialized (call set_ctx first)")
 
 reconnect = lambda *a, **k: (_require_ctx(), ctx.reconnect(*a, **k))[1]
+connect = lambda *a, **k: (_require_ctx(), ctx.connect(*a, **k))[1]
