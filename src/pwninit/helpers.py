@@ -59,32 +59,38 @@ class PwnContext:
 
     def recv(self, prefix=None, **kwargs):
         r = kwargs.pop("io", self.conn)
+        line = kwargs.pop("line", False)
         if prefix is None:
-            return r.recv(**kwargs)
-        elif type(prefix) == int:
+            if line:
+                return r.recvline(**kwargs)
+            else:
+                return r.recv(**kwargs)
+        elif isinstance(prefix, int):
             return r.recvn(prefix, **kwargs)
         else:
-            if type(prefix) == str:
+            if isinstance(prefix, str):
                 prefix = prefix.encode()
+
             drop = kwargs.pop("drop", True)
-            return r.recvuntil(prefix, drop=drop, **kwargs)
+            if line:
+                return r.recvlineuntil(prefix, drop=drop, **kwargs)
+            else:
+                return r.recvuntil(prefix, drop=drop, **kwargs)
 
-    def ru(self, u):
-        return recv(u)
+    def ru(self, u, **kwargs):
+        return self.recv(u, **kwargs)
 
-    def rl(self):
-        return recv('\n')
+    def rl(self, **kwargs):
+        return self.recv(line=True, **kwargs)
 
-    def rla(self, d):
-        self.ru(d)
-        return rl()
-        
-    def rln(self, n):
+    def rla(self, d, **kwargs):
+        return self.recv(d, line=True, **kwargs)
+
+    def rln(self, n, **kwargs):
         lines = []
         for _ in range(n):
-            lines.append(recv('\n'))
-        return lines        
-
+            lines.append(self.rl(**kwargs))
+        return lines
         
     def safelink_bf64(self, ptr):
         fd = 0
@@ -93,12 +99,12 @@ class PwnContext:
             fd <<= 12
             fd |= (tmp ^ (ptr >> i)) & 0xfff
         if fd & 0xf != 0:
-            error("safelink bf page differs")
+            log.warn("safelink bf page differs")
         return fd
 
     def printx(self, **kwargs):
         for k, v in kwargs.items():
-            success("%s: %#x" % (k, v))  
+            log.success("%s: %#x" % (k, v))  
 
     def resolve(self, symbol, base=None):
         """Resolve a symbol to an address, with optional offset notation (e.g., 'main+0x10')"""
