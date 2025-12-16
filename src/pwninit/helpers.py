@@ -1,6 +1,7 @@
 from pwn import *
 import pwn
 import re
+from io import *
 
 class PwnContext:    
     def __init__(self, conn, elf, libc, binary, prefix, offset, canary):
@@ -21,76 +22,6 @@ class PwnContext:
 
     def getr(self, d, p):
         return re.findall(p, d)[0]
-
-    def prompt(self, data, **kwargs):
-        if type(data) == int:
-            data = str(data).encode()
-        elif type(data) == str:
-            data = data.encode()
-
-        r = kwargs.pop("io", self.conn)
-        prefix = kwargs.pop("prefix", self.prefix)
-        line = kwargs.pop("line", True)
-        if prefix is not None:
-            if line:
-                r.sendlineafter(prefix, data, **kwargs)
-            else:
-                r.sendafter(prefix, data, **kwargs)
-        else:
-            if line:
-                r.sendline(data, **kwargs)
-            else:
-                r.send(data, **kwargs)
-
-    def sla(self, *args, **kwargs):
-        if len(args) == 1:
-            self.prompt(args[0], **kwargs)
-        elif len(args) >= 2:
-            self.prompt(args[1], prefix=args[0], **kwargs)
-        
-    def sa(self, *args, **kwargs):
-        self.sla(*args, line=False, **kwargs)
-
-    def sl(self, data, **kwargs):
-        self.prompt(data, prefix=None, **kwargs)
-
-    def send(self, data, **kwargs):
-        self.prompt(data, prefix=None, line=False, **kwargs)
-
-    def recv(self, prefix=None, **kwargs):
-        r = kwargs.pop("io", self.conn)
-        line = kwargs.pop("line", False)
-        if prefix is None:
-            if line:
-                return r.recvline(**kwargs)
-            else:
-                return r.recv(**kwargs)
-        elif isinstance(prefix, int):
-            return r.recvn(prefix, **kwargs)
-        else:
-            if isinstance(prefix, str):
-                prefix = prefix.encode()
-
-            drop = kwargs.pop("drop", True)
-            if line:
-                return r.recvlineuntil(prefix, drop=drop, **kwargs)
-            else:
-                return r.recvuntil(prefix, drop=drop, **kwargs)
-
-    def ru(self, u, **kwargs):
-        return self.recv(u, **kwargs)
-
-    def rl(self, **kwargs):
-        return self.recv(line=True, **kwargs)
-
-    def rla(self, d, **kwargs):
-        return self.recv(d, line=True, **kwargs)
-
-    def rln(self, n, **kwargs):
-        lines = []
-        for _ in range(n):
-            lines.append(self.rl(**kwargs))
-        return lines
         
     def safelink_bf64(self, ptr):
         fd = 0
@@ -206,7 +137,7 @@ class PwnContext:
     def find_offset(self, data=cyclic(1000)):
         context.delete_corefiles = True
         self.conn = process(self.binary)
-        self.send(data)
+        send(data)
         self.conn.wait()
         core = self.conn.corefile
         self.offset = cyclic_find(core.fault_addr)
@@ -296,19 +227,6 @@ def _require_ctx():
 
 getb = lambda *a, **k: (_require_ctx(), ctx.getb(*a, **k))[1]
 getr = lambda *a, **k: (_require_ctx(), ctx.getr(*a, **k))[1]
-
-prompt = lambda *a, **k: (_require_ctx(), ctx.prompt(*a, **k))[1]
-
-sla = lambda *a, **k: (_require_ctx(), ctx.sla(*a, **k))[1]
-sa  = lambda *a, **k: (_require_ctx(), ctx.sa(*a, **k))[1]
-sl  = lambda *a, **k: (_require_ctx(), ctx.sl(*a, **k))[1]
-send = lambda *a, **k: (_require_ctx(), ctx.send(*a, **k))[1]
-
-recv = lambda *a, **k: (_require_ctx(), ctx.recv(*a, **k))[1]
-ru   = lambda *a, **k: (_require_ctx(), ctx.ru(*a, **k))[1]
-rl   = lambda *a, **k: (_require_ctx(), ctx.rl(*a, **k))[1]
-rla  = lambda *a, **k: (_require_ctx(), ctx.rla(*a, **k))[1]
-rln  = lambda *a, **k: (_require_ctx(), ctx.rln(*a, **k))[1]
 
 safelink_bf64 = lambda *a, **k: (_require_ctx(), ctx.safelink_bf64(*a, **k))[1]
 printx = lambda *a, **k: (_require_ctx(), ctx.printx(*a, **k))[1]
