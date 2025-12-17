@@ -26,6 +26,8 @@ def addr_type(value):
             return SSH, user, password, ip, 22
     elif ":" in value:
         ip, port = value.split(":", 1)
+        if ip == '':
+            return NC, 'localhost', int(port)
         return NC, ip, int(port)
     else:
         raise argparse.ArgumentTypeError(
@@ -36,39 +38,44 @@ def addr_type(value):
 def parse_args():
     parser = argparse.ArgumentParser(description="Runner for pwn exploits.")
     parser.add_argument(
-        "-r",
-        "--remote",
+        "-r", "--remote",
         action="store",
         metavar="addr",
         type=addr_type,
         help="run remotely (ip:port for nc and user:password@ip for ssh)",
     )
     parser.add_argument(
+        "-l", "--local-bin",
+        action="store_true",
+        help="start the chall as a server, by default remote port is 1337 and can be changed using -r :port"
+    )
+    parser.add_argument("--ssl", action="store_true", help="enable ssl")
+    parser.add_argument(
         '--path',
         action="store",
         metavar="'/challenge'",
         help="set a path where challenge is located when using remote ssh"
     )
-    parser.add_argument("--ssl", action="store_true", help="enable ssl")
     parser.add_argument("-d", "--debug", action="store_true", help="enable debug mode")
     parser.add_argument("-a", "--attach", action="store_true", help="enable debug mode (gdb attach)")
-    parser.add_argument(
-        "-s",
-        "--strace",
-        action="store_true",
-        help="run with strace and store the strace output into strace.out",
-    )
     parser.add_argument(
         "--gdb-command",
         action="store",
         metavar="'c'",
         help="set a command to run at the start of gdb work only if debug is set",
     )
+    parser.add_argument(
+        "-s",
+        "--strace",
+        action="store_true",
+        help="run with strace and store the strace output into strace.out",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose mode")
     args = parser.parse_args()
 
     if args.gdb_command and not args.debug and not args.attach:
         log.error("--gdb-command can only be used with --debug")
+
     if args.debug and args.attach:
         log.error("--debug and --attach are incompatible")
         

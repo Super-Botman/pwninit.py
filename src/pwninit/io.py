@@ -61,6 +61,12 @@ class IOContext:
     @property
     def conn(self):
         if not self._conn:
+            if self.args.local_bin and not self.args.remote:
+                self.args.remote = [NC, 'localhost', 1337]
+                
+            if not self.args.remote or self.args.local_bin:
+                io = self.__create_local_process()
+
             if self.args.remote:
                 if self.args.remote[0] == SSH:
                     self.ssh_conn = self.__create_remote_connection()
@@ -69,8 +75,6 @@ class IOContext:
                     io = self.__create_ssh_process()
                 else:
                     io = self.__create_remote_connection()
-            else:
-                io = self.__create_local_process()
 
             if not io:
                 log.error("Failed to create process")
@@ -167,8 +171,10 @@ def _require_ctx():
     if ctx is None:
         raise RuntimeError("PwnContext not initialized (call set_ctx first)")
 
-def connect():
+def connect(default=False):
     io = IOContext(ctx.args, ctx.chall, ctx.prefix)
+    if default:
+        ctx = io
     return io.conn
 
 reconnect = lambda *a, **k: (_require_ctx(), ctx.reconnect(*a, **k))[1]
