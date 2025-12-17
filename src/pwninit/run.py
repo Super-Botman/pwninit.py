@@ -87,7 +87,7 @@ def parse_args():
 
 def setup_context(args):
     context.log_level = "DEBUG" if args.verbose else "INFO"
-    # context.terminal = ["kitten", "@launch", "--copy-env", "--cwd", "current"]
+    context.terminal = ["kitten", "@launch", "--copy-env", "--cwd", "current"]
 
     libc = exploit.LIBC if hasattr(exploit, "LIBC") else None
 
@@ -136,9 +136,9 @@ def cli():
     prefix = exploit.PREFIX if hasattr(exploit, "PREFIX") else "> "
 
     io.set_ctx(io.IOContext(args, exploit.CHALL, prefix))
-    conn = io.ctx.conn
+    conn = io.ioctx.conn
 
-    helpers.set_ctx(helpers.PwnContext(conn, elf, libc, binary, prefix, None, None))
+    helpers.set_ctx(helpers.PwnContext(io.ioctx.proc, elf, libc, binary, prefix, None, None))
 
     try:
         flag = exploit.exploit(io=conn, elf=elf, libc=libc)

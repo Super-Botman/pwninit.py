@@ -5,12 +5,13 @@ NC = 1
 SSH = 2
 
 class IOContext:
-    def __init__(self, args, chall, prefix):
+    def __init__(self, args, chall, prefix, proc=None):
         self.args = args
         self.chall = chall
         self.prefix = prefix
         self.ssh_conn = None
         self._conn = None
+        self.proc = proc
     
     def __create_remote_connection(self):
         conn_type = self.args.remote[0]
@@ -64,8 +65,9 @@ class IOContext:
             if self.args.local_bin and not self.args.remote:
                 self.args.remote = [NC, 'localhost', 1337]
                 
-            if not self.args.remote or self.args.local_bin:
+            if not self.args.remote or self.args.local_bin and not self.proc:
                 io = self.__create_local_process()
+                self.proc = io
 
             if self.args.remote:
                 if self.args.remote[0] == SSH:
@@ -161,33 +163,34 @@ class IOContext:
             lines.append(self.rl(**kwargs))
         return lines
 
-ctx = None
+ioctx = None
 
 def set_ctx(new_ctx: IOContext):
-    global ctx
-    ctx = new_ctx
+    global ioctx
+    ioctx = new_ctx
 
 def _require_ctx():
-    if ctx is None:
+    if ioctx is None:
         raise RuntimeError("PwnContext not initialized (call set_ctx first)")
 
 def connect(default=False):
-    io = IOContext(ctx.args, ctx.chall, ctx.prefix)
+    global ioctx
+    io = IOContext(ioctx.args, ioctx.chall, ioctx.prefix, ioctx.proc)
     if default:
-        ctx = io
+        ioctx = io
     return io.conn
 
-reconnect = lambda *a, **k: (_require_ctx(), ctx.reconnect(*a, **k))[1]
+reconnect = lambda *a, **k: (_require_ctx(), ioctx.reconnect(*a, **k))[1]
 
-prompt = lambda *a, **k: (_require_ctx(), ctx.prompt(*a, **k))[1]
+prompt = lambda *a, **k: (_require_ctx(), ioctx.prompt(*a, **k))[1]
 
-sla = lambda *a, **k: (_require_ctx(), ctx.sla(*a, **k))[1]
-sa  = lambda *a, **k: (_require_ctx(), ctx.sa(*a, **k))[1]
-sl  = lambda *a, **k: (_require_ctx(), ctx.sl(*a, **k))[1]
-send = lambda *a, **k: (_require_ctx(), ctx.send(*a, **k))[1]
+sla = lambda *a, **k: (_require_ctx(), ioctx.sla(*a, **k))[1]
+sa  = lambda *a, **k: (_require_ctx(), ioctx.sa(*a, **k))[1]
+sl  = lambda *a, **k: (_require_ctx(), ioctx.sl(*a, **k))[1]
+send = lambda *a, **k: (_require_ctx(), ioctx.send(*a, **k))[1]
 
-recv = lambda *a, **k: (_require_ctx(), ctx.recv(*a, **k))[1]
-ru   = lambda *a, **k: (_require_ctx(), ctx.ru(*a, **k))[1]
-rl   = lambda *a, **k: (_require_ctx(), ctx.rl(*a, **k))[1]
-rla  = lambda *a, **k: (_require_ctx(), ctx.rla(*a, **k))[1]
-rln  = lambda *a, **k: (_require_ctx(), ctx.rln(*a, **k))[1]
+recv = lambda *a, **k: (_require_ctx(), ioctx.recv(*a, **k))[1]
+ru   = lambda *a, **k: (_require_ctx(), ioctx.ru(*a, **k))[1]
+rl   = lambda *a, **k: (_require_ctx(), ioctx.rl(*a, **k))[1]
+rla  = lambda *a, **k: (_require_ctx(), ioctx.rla(*a, **k))[1]
+rln  = lambda *a, **k: (_require_ctx(), ioctx.rln(*a, **k))[1]

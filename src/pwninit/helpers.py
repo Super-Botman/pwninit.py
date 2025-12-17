@@ -1,11 +1,11 @@
-from pwn import *
+from pwn import log, context, cyclic, unpack, log
+from io import *
 import pwn
 import re
-from io import *
 
 class PwnContext:    
-    def __init__(self, conn, elf, libc, binary, prefix, offset, canary):
-        self.conn = conn
+    def __init__(self, proc, elf, libc, binary, prefix, offset, canary):
+        self.proc = proc
         self.elf = elf
         self.libc = libc
         self.binary = binary
@@ -56,7 +56,7 @@ class PwnContext:
     def hexdump(self, data, s=context.word_size//8):
         idx_max = ceil(log(len(data)/s, 16))
         for i, c in enumerate(sliced(data, s)):
-            info(f"%0{idx_max}x: %#0{2*s+2}x" % (i, u64(c)))
+            log.info(f"%0{idx_max}x: %#0{2*s+2}x" % (i, u64(c)))
     
     def leak(self, leak, leaked=0):
         start = leak.find(b'0x')
@@ -79,26 +79,25 @@ class PwnContext:
 
     
     def check_leaks(self, leak):
-        """Check if leaked addresses match actual addresses"""
-        for m in self.conn.maps():
+        for m in self.proc.maps():
             if m.start <= leak <= m.end:
                 base = 0
                 
                 if self.elf.path == m.path:
                     name = "elf"
-                    base = self.conn.elf_mapping().address
+                    base = self.proc.elf_mapping().address
                 elif self.libc.path == m.path:
                     name = "libc"
-                    base = self.conn.libc_mapping().address
+                    base = self.proc.libc_mapping().address
                 else:
                     name = m.path[1:-1]
-                    base = getattr(self.conn, f'{name}_mapping')().address
+                    base = getattr(self.proc, f'{name}_mapping')().address
 
                 if base > 0 and leak != base:
-                    info(f"{name}: leak = {leak:#x}, base = {base:#x}, diff = {leak - base}")
+                    log.info(f"{name}: leak = {leak:#x}, base = {base:#x}, diff = {leak - base}")
                     if getattr(self, name, False): getattr(self, name).address = base
                 else:
-                    info(f"{name}: leak = {leak:#x}")
+                    log.info(f"{name}: leak = {leak:#x}")
 
 
 
@@ -136,20 +135,18 @@ class PwnContext:
 
     def find_offset(self, data=cyclic(1000)):
         context.delete_corefiles = True
-        self.conn = process(self.binary)
+        self.proc = process(self.binary)
         send(data)
-        self.conn.wait()
-        core = self.conn.corefile
+        self.proc.wait()
+        core = self.proc.corefile
         self.offset = cyclic_find(core.fault_addr)
-        self.conn.close()
-        self.conn = None
+        self.proc.close()
+        self.proc = None
         info(f"{self.offset = }")
 
     def bof(self, data, **kwargs):
         if self.offset is None:
             self.find_offset()
-        if self.conn is None:
-            raise RuntimeError("Connection not initialized")
         opt = kwargs.pop("opt", {})
         bp = kwargs.pop("bp", 0)
         opt |= {self.offset - context.bytes: bp}
@@ -215,44 +212,44 @@ class PwnContext:
         return next(self.libc.search(b"/bin/sh\0"))
 
 # Global instance
-ctx = None
+pwnctx = None
 
 def set_ctx(new_ctx: PwnContext):
-    global ctx
-    ctx = new_ctx
+    global pwnctx
+    pwnctx = new_ctx
 
 def _require_ctx():
-    if ctx is None:
+    if pwnctx is None:
         raise RuntimeError("PwnContext not initialized (call set_ctx first)")
 
-getb = lambda *a, **k: (_require_ctx(), ctx.getb(*a, **k))[1]
-getr = lambda *a, **k: (_require_ctx(), ctx.getr(*a, **k))[1]
+getb = lambda *a, **k: (_require_ctx(), pwnctx.getb(*a, **k))[1]
+getr = lambda *a, **k: (_require_ctx(), pwnctx.getr(*a, **k))[1]
 
-safelink_bf64 = lambda *a, **k: (_require_ctx(), ctx.safelink_bf64(*a, **k))[1]
-printx = lambda *a, **k: (_require_ctx(), ctx.printx(*a, **k))[1]
-hexdump = lambda *a, **k: (_require_ctx(), ctx.hexdump(*a, **k))[1]
+safelink_bf64 = lambda *a, **k: (_require_ctx(), pwnctx.safelink_bf64(*a, **k))[1]
+printx = lambda *a, **k: (_require_ctx(), pwnctx.printx(*a, **k))[1]
+hexdump = lambda *a, **k: (_require_ctx(), pwnctx.hexdump(*a, **k))[1]
 
-leak = lambda *a, **k: (_require_ctx(), ctx.leak(*a, **k))[1]
-resolve = lambda *a, **k: (_require_ctx(), ctx.resolve(*a, **k))[1]
-check_leaks = lambda *a, **k: (_require_ctx(), ctx.check_leaks(*a, **k))[1]
+leak = lambda *a, **k: (_require_ctx(), pwnctx.leak(*a, **k))[1]
+resolve = lambda *a, **k: (_require_ctx(), pwnctx.resolve(*a, **k))[1]
+check_leaks = lambda *a, **k: (_require_ctx(), pwnctx.check_leaks(*a, **k))[1]
 
-ropchain = lambda *a, **k: (_require_ctx(), ctx.ropchain(*a, **k))[1]
-find_offset = lambda *a, **k: (_require_ctx(), ctx.find_offset(*a, **k))[1]
-bof = lambda *a, **k: (_require_ctx(), ctx.bof(*a, **k))[1]
+ropchain = lambda *a, **k: (_require_ctx(), pwnctx.ropchain(*a, **k))[1]
+find_offset = lambda *a, **k: (_require_ctx(), pwnctx.find_offset(*a, **k))[1]
+bof = lambda *a, **k: (_require_ctx(), pwnctx.bof(*a, **k))[1]
 
-ret2shellcode = lambda *a, **k: (_require_ctx(), ctx.ret2shellcode(*a, **k))[1]
-ret2win = lambda *a, **k: (_require_ctx(), ctx.ret2win(*a, **k))[1]
-ret2libc = lambda *a, **k: (_require_ctx(), ctx.ret2libc(*a, **k))[1]
-ret2plt = lambda *a, **k: (_require_ctx(), ctx.ret2plt(*a, **k))[1]
+ret2shellcode = lambda *a, **k: (_require_ctx(), pwnctx.ret2shellcode(*a, **k))[1]
+ret2win = lambda *a, **k: (_require_ctx(), pwnctx.ret2win(*a, **k))[1]
+ret2libc = lambda *a, **k: (_require_ctx(), pwnctx.ret2libc(*a, **k))[1]
+ret2plt = lambda *a, **k: (_require_ctx(), pwnctx.ret2plt(*a, **k))[1]
 
-format_string = lambda *a, **k: (_require_ctx(), ctx.format_string(*a, **k))[1]
+format_string = lambda *a, **k: (_require_ctx(), pwnctx.format_string(*a, **k))[1]
 
-safelink = lambda *a, **k: (_require_ctx(), ctx.safelink(*a, **k))[1]
-ptr_mangle = lambda *a, **k: (_require_ctx(), ctx.ptr_mangle(*a, **k))[1]
-ptr_demangle = lambda *a, **k: (_require_ctx(), ctx.ptr_demangle(*a, **k))[1]
-ptr_cookie = lambda *a, **k: (_require_ctx(), ctx.ptr_cookie(*a, **k))[1]
+safelink = lambda *a, **k: (_require_ctx(), pwnctx.safelink(*a, **k))[1]
+ptr_mangle = lambda *a, **k: (_require_ctx(), pwnctx.ptr_mangle(*a, **k))[1]
+ptr_demangle = lambda *a, **k: (_require_ctx(), pwnctx.ptr_demangle(*a, **k))[1]
+ptr_cookie = lambda *a, **k: (_require_ctx(), pwnctx.ptr_cookie(*a, **k))[1]
 
-binsh = lambda *a, **k: (_require_ctx(), ctx.binsh(*a, **k))[1]
+binsh = lambda *a, **k: (_require_ctx(), pwnctx.binsh(*a, **k))[1]
 
 # Utility functions
 u64 = lambda d: pwn.u64(d.ljust(8, b"\0")[:8])
