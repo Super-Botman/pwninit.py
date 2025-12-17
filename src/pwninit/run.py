@@ -136,7 +136,7 @@ def cli():
     prefix = exploit.PREFIX if hasattr(exploit, "PREFIX") else "> "
 
     io.set_ctx(io.IOContext(args, exploit.CHALL, prefix))
-    conn = io.ctx.conn
+    conn = io.ioctx.conn
 
     helpers.set_ctx(helpers.PwnContext(conn, elf, libc, binary, prefix, None, None))
 
