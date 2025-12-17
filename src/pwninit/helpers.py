@@ -1,4 +1,4 @@
-from pwn import log, context, cyclic, unpack, log
+from pwn import log, context, cyclic, unpack, log, asm, flat
 import pwn
 import re
 import math
@@ -238,13 +238,20 @@ def getr(d, p):
     return re.findall(p, d)[0]
     
 def safelink_bf64(ptr):
+    r"""safelink_bf64(ptr) -> int
+
+    Recover a safelinked next pointer assuming both next & addr are in the same page
+    
+    Arguments:
+        ptr(int): The next value
+    """
     fd = 0
     for i in range(36, -1, -12):
         tmp = fd
         fd <<= 12
         fd |= (tmp ^ (ptr >> i)) & 0xfff
     if fd & 0xf != 0:
-        log.warn("safelink bf page differs")
+        log.warn("safelink_bf64() page differs")
     return fd
 
 def printx(**kwargs):
@@ -267,3 +274,25 @@ def ptr_demangle(addr, cookie=0):
 
 def ptr_cookie(mangled, demangled):
     return ptr_demangle(mangled, demangled)
+
+def jitspray(code, size=8, jmp=b"\xeb\x03"):
+    r"""jitspray(code, size=8, jmp=b"\\xeb\\x03") -> list
+
+    Perform a jitspray with movabs on x64 by default.
+    
+    Arguments:
+        code(str):  Assembler code
+        size(str):  Maximum code part size (default 8 for movabs)
+        jmp(str):   Stub for jumping between code parts
+    """
+    code = [asm(c) for c in code.splitlines()]
+    size -= len(jmp)
+    parts = [b""]
+    for c in code:
+        p = parts[-1]
+        if len(p) + len(c) > size:
+            parts[-1] = p.ljust(size, b"\x90") + jmp
+            parts.append(c)
+        else:
+            parts[-1] += c
+    return [u64(p) for p in parts]
