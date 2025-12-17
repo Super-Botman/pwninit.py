@@ -87,7 +87,6 @@ def parse_args():
 
 def setup_context(args):
     context.log_level = "DEBUG" if args.verbose else "INFO"
-    context.terminal = ["kitten", "@launch", "--copy-env", "--cwd", "current"]
 
     libc = exploit.LIBC if hasattr(exploit, "LIBC") else None
 
