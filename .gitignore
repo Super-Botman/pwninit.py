@@ -3,5 +3,6 @@ dist
 dist/*
 src/pwninit.egg-info
 tests
+dev_env
 *.pyc
 __pycache__
