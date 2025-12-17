@@ -1,6 +1,6 @@
 # pwninit 🚧 WIP 🚧
 
-We're currently redisigning the whole lib with a better code, a lot of helpers to automate exploitation and a lot more parameters to run the exploits.
+We're currently redesigning the whole lib with a better code, a lot of helpers to automate exploitation and a lot more parameters to run the exploits.
 ---
 
 A comprehensive Python toolkit for CTF binary exploitation challenges that streamlines the setup and execution process.
