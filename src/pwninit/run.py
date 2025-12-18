@@ -137,10 +137,10 @@ def cli():
     io.set_ctx(io.IOContext(args, exploit.CHALL, prefix))
     conn = io.ioctx.conn
 
-    helpers.set_ctx(helpers.PwnContext(io.ioctx.proc, elf, libc, binary, prefix, None, None))
+    helpers.set_ctx(helpers.PwnContext(io.ioctx.proc, elf, libc, binary, prefix))
 
     try:
-        flag = exploit.exploit(io=conn, elf=elf, libc=libc)
+        flag = exploit.exploit(helpers.pwnctx, elf, libc)
         if flag:
             log.success("flag: %s" % flag)
             save_flag(flag)
