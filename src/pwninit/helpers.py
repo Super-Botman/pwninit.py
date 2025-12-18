@@ -38,22 +38,6 @@ class PwnContext:
         self._offset = None
         self._canary = None
 
-    def resolve(self, symbol, base=None):
-        """Resolve a symbol to an address, with optional offset notation (e.g., 'main+0x10')"""
-        if base is None:
-            base = self.elf
-        if isinstance(symbol, int):
-            return symbol
-        elif "+" in symbol:
-            func, offset = symbol.split("+")
-            addr = base.sym[func] + int(offset, 0)
-        elif "-" in symbol:
-            func, offset = symbol.split("-")
-            addr = base.sym[func] - int(offset, 0)
-        else:
-            addr = base.sym[symbol]
-        return addr
-
     @property
     def canary(self):
         if not self._canary and self.proc:
@@ -94,8 +78,21 @@ class PwnContext:
     def offset(self, new_offset):
         self._offset = new_offset
         return self._offset
+
+    def resolve(self, symbol):
+        if isinstance(symbol, int):
+            return symbol
+        elif "+" in symbol:
+            func, offset = symbol.split("+")
+            addr = self.elf.sym[func] + int(offset, 0)
+        elif "-" in symbol:
+            func, offset = symbol.split("-")
+            addr = self.elf.sym[func] - int(offset, 0)
+        else:
+            addr = self.elf.sym[symbol]
+        return addr
     
-    def leak(self, leak, leaked=0):
+    def leak(self, leak, leaked=0, name=None):
         start = leak.find(b'0x')
         end = 2
 
@@ -107,29 +104,64 @@ class PwnContext:
             leak = leak[:end]
             leak = int(leak, 16)
         else:
-            word_size = context.bits//8
-            leak = leak.ljust(word_size, b'\x00')[:word_size]
-            leak = unpack(leak, context.bits)
+            if len(leak) <= 8:
+                leak = upack(leak)
+            else:
+                if leak[-1] ==  0xa: leak = leak[:-1]
+                for i in range(len(leak)):
+                    for j in range(6,8,1):
+                        l = upack(leak[i:i+j])
+                        name, base = check_leaks(l)
+                        if not name:
+                            name, base = check_leaks(l)
+                        if name:
+                            leak = l
+                            log.info(f'{name} found at leak[{i}:{i+6}]')
+                            break
+                    if name:
+                        break
+
+                if not name:
+                    log.warn('cannot find leak, try another way')
+                    exit(0)
 
         leak -= leaked
-        self.check_leaks(leak)
+
+        if not name:
+            name, base = self.check_leaks(leak)
+
+        var = getattr(self, name, False)
+        if var != False:
+            if type(getattr(var, 'address', False)) == int:
+                var.address = base
+            else:
+                setattr(self, name, base)
+                
+        if base > 0 and leak != base:
+            log.info(f"{name}: leak = {leak:#x}, base = {base:#x}, diff = {leak - base}")
+        else:
+            log.info(f"{name}: leak = {leak:#x}")
+
+        log.warn("don't forget to set all parameters when runnning with remote")
+
         return leak
 
     
     def check_leaks(self, leak):
         if not self.proc:
-            return
+            return None, None
             
-        if leak == self.canary:
-            log.info(f"canary: leak = {leak:#x}")
+        if hex(leak) in hex(self.canary):
+            return 'canary', self.canary
 
         for m in self.proc.maps():
             if m.start <= leak <= m.end:
                 base = 0
+                name = ''
                 
                 if self.elf.path == m.path:
                     name = "elf"
-                    base = self.proc.elf_mapping().address
+                    base = self.proc.elf_mapping().address                  
                 elif self.libc.path == m.path:
                     name = "libc"
                     base = self.proc.libc_mapping().address
@@ -137,18 +169,12 @@ class PwnContext:
                     name = m.path[1:-1]
                     base = getattr(self.proc, f'{name}_mapping')().address
 
-                if base > 0 and leak != base:
-                    log.info(f"{name}: leak = {leak:#x}, base = {base:#x}, diff = {leak - base}")
-                    if getattr(self, name, False): getattr(self, name).address = base
-                else:
-                    log.info(f"{name}: leak = {leak:#x}")
+                return name, base
+        return None, None
 
-
-
-    def ropchain(self, chain, ret=True, elf=None, libc=None):
-        """Build a ROP chain from a dictionary of {function: [args]}"""
-        elf = elf or self.elf
-        libc = libc or self.libc
+    def ropchain(self, chain, ret=True):
+        elf = self.elf
+        libc = self.libc
 
         elfs = []
         if elf and (not elf.pie or elf.address):
@@ -176,15 +202,25 @@ class PwnContext:
         log.info(f"ROP :\n{rop.dump()}")
         return rop.chain()
 
-    def bof(self, data, **kwargs):
+    def bof(self, data, opt=None, bp=None, **kwargs):
         offset = self.offset
-        opt = kwargs.pop("opt", {})
-        bp = kwargs.pop("bp", 0)
-        opt |= {self.offset - context.bytes: bp}
-        if self.elf.canary:
-            opt |= {offset - context.bytes * 2: self.canary}
-        payload = flat({self.offset: data} | opt, **kwargs)
-        send(payload)
+        canary = self.canary
+
+        if opt is None:
+            opt = {}
+
+        if canary:
+            opt |= {offset: canary}
+            offset += context.bytes
+
+        if bp:
+            opt |= {offset: bp}
+            offset += context.bytes
+
+
+        payload = flat({offset: data} | opt, **kwargs)
+        return payload
+
 
     def ret2shellcode(self, addr, **kwargs):
         shellcode = asm(shellcraft.sh())
@@ -264,9 +300,6 @@ leak = lambda *a, **k: (_require_ctx(), pwnctx.leak(*a, **k))[1]
 resolve = lambda *a, **k: (_require_ctx(), pwnctx.resolve(*a, **k))[1]
 check_leaks = lambda *a, **k: (_require_ctx(), pwnctx.check_leaks(*a, **k))[1]
 
-resolve = lambda *a, **k: (_require_ctx(), pwnctx.resolve(*a, **k))[1]
-check_leaks = lambda *a, **k: (_require_ctx(), pwnctx.check_leaks(*a, **k))[1]
-
 offset = lambda *a, **k: (_require_ctx(), pwnctx.offset)[1]
 canary = lambda *a, **k: (_require_ctx(), pwnctx.canary)[1]
 ropchain = lambda *a, **k: (_require_ctx(), pwnctx.ropchain(*a, **k))[1]
@@ -286,7 +319,8 @@ fsopsh = lambda *a, **k: (_require_ctx(), pwnctx.fsopsh(*a, **k))[1]
 u64 = lambda d: pwn.u64(d.ljust(8, b"\0")[:8])
 u32 = lambda d: pwn.u32(d.ljust(4, b"\0")[:4])
 u16 = lambda d: pwn.u16(d.ljust(2, b"\0")[:2])
-upack = lambda d: pwn.unpack(d, "all")
+# upack = lambda d: pwn.unpack(d, "all")
+upack = lambda d: unpack(d.ljust(context.bits//8, b'\x00'), context.bits)
 
 def getb(d, a, b):
     a_ = d.find(a)
