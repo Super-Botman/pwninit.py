@@ -135,12 +135,11 @@ def cli():
     prefix = exploit.PREFIX if hasattr(exploit, "PREFIX") else "> "
 
     io.set_ctx(io.IOContext(args, exploit.CHALL, prefix))
-    conn = io.ioctx.conn
 
     helpers.set_ctx(helpers.PwnContext(io.ioctx.proc, elf, libc, binary, prefix))
 
     try:
-        flag = exploit.exploit(helpers.pwnctx, elf, libc)
+        flag = exploit.exploit(helpers.pwnctx.conn, elf, libc)
         if flag:
             log.success("flag: %s" % flag)
             save_flag(flag)
