@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "pwninit"
@@ -17,14 +17,14 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 dependencies = [
-  "pwntools[pwnlib]",
+  "pwntools",
   "argparse",
   "docker",
   "mako"
 ]
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/pwninit"]
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [project.scripts]
 pwninit = "pwninit.pwninit:cli"
