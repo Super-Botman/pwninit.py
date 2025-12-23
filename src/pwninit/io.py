@@ -62,7 +62,7 @@ class IOContext:
     def connect(self):
         if not self.conn:
             if self.args.local_bin and not self.args.remote:
-                self.args.remote = [NC, 'localhost', 1337]
+                self.args.remote = [NC, 'localhost', 5000]
                 
             if not self.args.remote or self.args.local_bin and not self.proc:
                 io = self.__create_local_process()
