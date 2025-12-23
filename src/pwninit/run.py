@@ -143,7 +143,7 @@ def cli():
     helpers.set_ctx(ctx)
 
     try:
-        flag = exploit.exploit(helpers.pwnctx, elf, libc)
+        flag = exploit.exploit(helpers.pwnctx, io.ioctx)
         if flag:
             log.success("flag: %s" % flag)
             save_flag(flag)
