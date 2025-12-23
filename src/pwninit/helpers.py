@@ -92,9 +92,10 @@ class PwnContext:
             addr = self.elf.sym[symbol]
         return addr
     
-    def leak(self, leak, leaked=0, name=None):
+    def leak(self, leak, leaked=0, name=''):
         start = leak.find(b'0x')
         end = 2
+        base = 0
 
         if start > 0:
             leak = leak[start:]
@@ -107,7 +108,7 @@ class PwnContext:
             if len(leak) <= 8:
                 leak = upack(leak)
             else:
-                if leak[-1] ==  0xa: leak = leak[:-1]
+                if leak[-1] == 0xa: leak = leak[:-1]
                 for i in range(len(leak)):
                     for j in range(6,8,1):
                         l = upack(leak[i:i+j])
@@ -129,36 +130,41 @@ class PwnContext:
 
         if not name:
             name, base = self.check_leaks(leak)
-
+            if base > 0:
+                leak = base
+                
         var = getattr(self, name, False)
         if var != False:
             if type(getattr(var, 'address', False)) == int:
-                var.address = base
+                var.address = leak
             else:
-                setattr(self, name, base)
+                setattr(self, name, leak)
                 
         if base > 0 and leak != base:
             log.info(f"{name}: leak = {leak:#x}, base = {base:#x}, diff = {leak - base}")
-        else:
+            log.warn("don't forget to set all parameters when runnning with remote")
+        elif name != '':
             log.info(f"{name}: leak = {leak:#x}")
-
-        log.warn("don't forget to set all parameters when runnning with remote")
+        elif not self.proc:
+            log.info(f"leak = {leak:#x}")
+        else:
+            log.warn("no leak found")
 
         return leak
 
     
     def check_leaks(self, leak):
+        base = 0
+        name = ''
+
         if not self.proc:
-            return None, None
-            
+            return name, base
+
         if hex(leak) in hex(self.canary):
             return 'canary', self.canary
 
         for m in self.proc.maps():
             if m.start <= leak <= m.end:
-                base = 0
-                name = ''
-                
                 if self.elf.path == m.path:
                     name = "elf"
                     base = self.proc.elf_mapping().address                  
@@ -170,7 +176,7 @@ class PwnContext:
                     base = getattr(self.proc, f'{name}_mapping')().address
 
                 return name, base
-        return None, None
+        return name, base
 
     def ropchain(self, chain, ret=True):
         elf = self.elf

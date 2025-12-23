@@ -10,7 +10,7 @@ class IOContext:
         self.chall = chall
         self.prefix = prefix
         self.ssh_conn = None
-        self._conn = None
+        self.conn = None
         self.proc = proc
     
     def __create_remote_connection(self):
@@ -59,9 +59,8 @@ class IOContext:
         except Exception as e:
             log.error("Failed to create local process: %s" % str(e))
 
-    @property
-    def conn(self):
-        if not self._conn:
+    def connect(self):
+        if not self.conn:
             if self.args.local_bin and not self.args.remote:
                 self.args.remote = [NC, 'localhost', 1337]
                 
@@ -81,17 +80,13 @@ class IOContext:
             if not io:
                 log.error("Failed to create process")
 
-            self._conn = io
-        return self._conn
-
-    @conn.setter
-    def conn(self, io):
-        return self._conn
+            self.conn = io
+        return self.conn
 
     def reconnect(self):
-        self._conn.close()
-        self._conn = None
-        return self.conn
+        self.conn.close()
+        self.conn = None
+        return self.connect()
     
     def prompt(self, data, **kwargs):
         if type(data) == int:
@@ -99,7 +94,7 @@ class IOContext:
         elif type(data) == str:
             data = data.encode()
 
-        r = kwargs.pop("io", self._conn)
+        r = kwargs.pop("io", self.conn)
         prefix = kwargs.pop("prefix", self.prefix)
         line = kwargs.pop("line", True)
         if prefix is not None:
@@ -141,11 +136,9 @@ class IOContext:
         else:
             if isinstance(prefix, str):
                 prefix = prefix.encode()
-
             drop = kwargs.pop("drop", True)
             if line:
-                r.recvuntil(prefix, drop=drop, **kwargs)
-                return r.recvline(drop=drop, **kwargs)
+                return r.recvlineuntil(prefix, drop=drop, **kwargs)
             else:
                 return r.recvuntil(prefix, drop=drop, **kwargs)
 
@@ -176,10 +169,10 @@ def _require_ctx():
 
 def connect(default=False):
     global ioctx
-    io = IOContext(ioctx.args, ioctx.chall, ioctx.prefix, ioctx.proc)
+    io = IOContext(ioctx.args, ioctx.chall, ioctx.prefix, ioctx.conn)
     if default:
         ioctx = io
-    return io.conn
+    return io.connect()
 
 reconnect = lambda *a, **k: (_require_ctx(), ioctx.reconnect(*a, **k))[1]
 

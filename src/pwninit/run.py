@@ -134,12 +134,16 @@ def cli():
     binary = elf if isinstance(elf, str) else exploit.CHALL
     prefix = exploit.PREFIX if hasattr(exploit, "PREFIX") else "> "
 
-    io.set_ctx(io.IOContext(args, exploit.CHALL, prefix))
+    ctx = io.IOContext(args, exploit.CHALL, prefix)
+    ctx.connect()
+    io.set_ctx(ctx)
 
-    helpers.set_ctx(helpers.PwnContext(io.ioctx.proc, elf, libc, binary, prefix))
+
+    ctx = helpers.PwnContext(io.ioctx.proc, elf, libc, binary, prefix)
+    helpers.set_ctx(ctx)
 
     try:
-        flag = exploit.exploit(io.ioctx.conn, elf, libc)
+        flag = exploit.exploit(helpers.pwnctx, elf, libc)
         if flag:
             log.success("flag: %s" % flag)
             save_flag(flag)
