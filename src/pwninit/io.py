@@ -144,7 +144,8 @@ class IOContext:
 
             drop = kwargs.pop("drop", True)
             if line:
-                return r.recvlineuntil(prefix, drop=drop, **kwargs)
+                r.recvuntil(prefix, drop=drop, **kwargs)
+                return r.recvline(drop=drop, **kwargs)
             else:
                 return r.recvuntil(prefix, drop=drop, **kwargs)
 
