@@ -130,15 +130,16 @@ class PwnContext:
 
         if not name:
             name, base = self.check_leaks(leak)
-            if base > 0:
-                leak = base
-                
+
+        if base == 0:
+            base = leak
+
         var = getattr(self, name, False)
         if var != False:
             if type(getattr(var, 'address', False)) == int:
-                var.address = leak
+                var.address = base
             else:
-                setattr(self, name, leak)
+                setattr(self, name, base)
                 
         if base > 0 and leak != base:
             log.info(f"{name}: leak = {leak:#x}, base = {base:#x}, diff = {leak - base}")
