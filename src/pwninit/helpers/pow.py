@@ -77,11 +77,12 @@ def _solve_hashcash(data):
     if len(cmd) == 0:
         log.error(f"Proof of work failed (hashcash): {data}")
     
+    cmd = cmd[0]
     p = run([binary, cmd[0], cmd[1]], stdout=PIPE, stderr=DEVNULL)
     if p.returncode != 0:
         log.error(f"Proof of work failed (hashcash): {data}")
     
-    return p.stdout
+    return p.stdout.strip()
 
 _functions = {
     b"Please provide an ASCII printable": _solve_sossette,
