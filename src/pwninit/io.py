@@ -189,3 +189,6 @@ ru   = lambda *a, **k: (_require_ctx(), ioctx.ru(*a, **k))[1]
 rl   = lambda *a, **k: (_require_ctx(), ioctx.rl(*a, **k))[1]
 rla  = lambda *a, **k: (_require_ctx(), ioctx.rla(*a, **k))[1]
 rln  = lambda *a, **k: (_require_ctx(), ioctx.rln(*a, **k))[1]
+
+clean = lambda *a, **k: (_require_ctx(), ioctx.conn.clean(*a, **k))[1]
+itrv = lambda *a, **k: (_require_ctx(), ioctx.conn.interactive(*a, **k))[1]
