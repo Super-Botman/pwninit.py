@@ -23,7 +23,7 @@ def _solve_sossette(data):
     
     prefix = prefix[0]
     difficulty = difficulty[0]
-    p = run(["pow-sossette", prefix, difficulty], stdout=PIPE, stderr=DEVNULL)
+    p = run([binary, prefix, difficulty], stdout=PIPE, stderr=DEVNULL)
     if p.returncode != 0:
         log.error(f"Proof of work failed (sossette): {data}")
     
@@ -41,7 +41,7 @@ def _solve_hxp(data):
     
     prefix = prefix[0]
     difficulty = difficulty[0]
-    p = run(["pow-hxp", prefix, difficulty], stdout=PIPE, stderr=DEVNULL)
+    p = run([binary, prefix, difficulty], stdout=PIPE, stderr=DEVNULL)
     if p.returncode != 0:
         log.error(f"Proof of work failed (hxp): {data}")
     
@@ -57,7 +57,7 @@ def _solve_redpwn(data):
         log.error(f"Proof of work failed (redpwn): {data}")
     
     arg = arg[0]
-    p = run(["pow-redpwn", arg], stdout=PIPE, stderr=DEVNULL)
+    p = run([binary, arg], stdout=PIPE, stderr=DEVNULL)
     if p.returncode != 0:
         log.error(f"Proof of work failed (redpwn): {data}")
     
@@ -73,10 +73,21 @@ def _solve_hashcash(data):
     if binary is None:
         return None
 
+    cmd = re.findall(rb"hashcash (-m.*?b\d+) ([0-9A-Za-z+/]+)", data)
+    if len(cmd) == 0:
+        log.error(f"Proof of work failed (hashcash): {data}")
+    
+    p = run([binary, cmd[0], cmd[1]], stdout=PIPE, stderr=DEVNULL)
+    if p.returncode != 0:
+        log.error(f"Proof of work failed (hashcash): {data}")
+    
+    return p.stdout
+
 _functions = {
     b"Please provide an ASCII printable": _solve_sossette,
     b"give S such that sha256": _solve_hxp,
     b"https://pwn.red/pow": _solve_redpwn,
+    b"hashcash": _solve_hashcash,
 }
 def _solve_pow(data):
     for s, f in _functions.items():
