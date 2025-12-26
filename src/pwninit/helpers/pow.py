@@ -64,9 +64,20 @@ def _solve_redpwn(data):
     return p.stdout
 
 def _solve_kctf(data):
-    binary = get_binary("kctf")
+    binary = get_binary("kctf") # kctf & redpwn are actually the same
     if binary is None:
         return None
+
+    arg = re.findall(rb"\) solve (.+)\n", data)
+    if len(arg) == 0:
+        log.error(f"Proof of work failed (kctf): {data}")
+    
+    arg = arg[0]
+    p = run([binary, arg], stdout=PIPE, stderr=DEVNULL)
+    if p.returncode != 0:
+        log.error(f"Proof of work failed (kctf): {data}")
+    
+    return p.stdout
 
 def _solve_hashcash(data):
     binary = get_binary("hashcash")
@@ -82,18 +93,19 @@ def _solve_hashcash(data):
     if p.returncode != 0:
         log.error(f"Proof of work failed (hashcash): {data}")
     
-    return p.stdout.strip()
+    return p.stdout
 
 _functions = {
     b"Please provide an ASCII printable": _solve_sossette,
     b"give S such that sha256": _solve_hxp,
     b"https://pwn.red/pow": _solve_redpwn,
+    b"please solve a pow first": _solve_kctf,
     b"hashcash": _solve_hashcash,
 }
 def _solve_pow(data):
     for s, f in _functions.items():
         if s in data:
-            return f(data)
+            return f(data).strip()
     log.warn(f"Unknown proof of work: {data}")
     return None
     
