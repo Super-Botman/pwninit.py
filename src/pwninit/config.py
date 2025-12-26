@@ -50,6 +50,13 @@ author=0xB0tm4n
 
 # Root-me provider settings
 # rootme_api_key=your_api_key_here
+
+# Proof of work binaries
+# sossette=pow-sossette
+# hxp=pow-hxp
+# redpwn=redpwnpow
+# kctf=pow-kctf
+# hashcash=hashcash
 """
 
         if not self.config_file.exists():
