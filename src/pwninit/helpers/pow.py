@@ -34,14 +34,14 @@ def _solve_hxp(data):
     if binary is None:
         return None
 
-    prefix = re.findall(rb"sha256(unhex(\"[0-9A-fa-f]+\"", data)
-    difficulty = re.findall(rb"starts with (\d+) bits", data)
+    prefix = re.findall(rb"sha256\(unhex\(\"([0-9A-fa-f]+)\"", data)
+    difficulty = re.findall(rb"ends with (\d+) zero", data)
     if len(prefix) == 0 or len(difficulty) == 0:
         log.error(f"Proof of work failed (hxp): {data}")
     
     prefix = prefix[0]
     difficulty = difficulty[0]
-    p = run([binary, prefix, difficulty], stdout=PIPE, stderr=DEVNULL)
+    p = run([binary, difficulty, prefix], stdout=PIPE, stderr=DEVNULL)
     if p.returncode != 0:
         log.error(f"Proof of work failed (hxp): {data}")
     
@@ -111,7 +111,7 @@ def _solve_pow(data):
     
 def solve_pow(io_=None):
     if isinstance(io_, tube) or isinstance(io_, io.IOContext):
-        pow = _solve_pow(io_.clean())
+        pow = _solve_pow(io_.clean(timeout=0.1))
         if pow is not None:
             io_.sendline(pow)
     elif io_ is None:
