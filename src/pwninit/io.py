@@ -87,16 +87,20 @@ class IOContext:
         self.conn.close()
         self.conn = None
         return self.connect()
-    
-    def prompt(self, data, **kwargs):
+
+    def encode(self, data):
         if type(data) == int:
             data = str(data).encode()
         elif type(data) == str:
             data = data.encode()
+        return data
+    
+    def prompt(self, data, **kwargs):
+        data = self.encode(data)
 
         r = kwargs.pop("io", self.conn)
-        prefix = kwargs.pop("prefix", self.prefix)
-        line = kwargs.pop("line", True)
+        prefix = self.encode(kwargs.pop("prefix", self.prefix))
+        line = self.encode(kwargs.pop("line", True))
         if prefix is not None:
             if line:
                 r.sendlineafter(prefix, data, **kwargs)
