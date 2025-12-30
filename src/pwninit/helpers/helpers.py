@@ -347,6 +347,8 @@ def jitspray(code, size=8, jmp=b"\xeb\x03"):
     size -= len(jmp)
     parts = [b""]
     for c in code:
+        if len(c) > size:
+            log.error(f"jitspray(): code part {c.hex()} too long for maximum size {size}")
         p = parts[-1]
         if len(p) + len(c) > size:
             parts[-1] = p.ljust(size, b"\x90") + jmp
