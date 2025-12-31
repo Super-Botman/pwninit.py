@@ -97,14 +97,11 @@ class PwnContext:
                     for j in range(6,8,1):
                         l = upack(leak[i:i+j])
                         name, base = check_leaks(l)
-                        if not name:
-                            name, base = check_leaks(l)
                         if name:
-                            leak = l
-                            log.info(f'{name} found at leak[{i}:{i+6}]')
+                            log.info(f'{name} found at leak[{i}:{i+j}]')
+                            name = None
                             break
-                    if name:
-                        break
+                return
 
                 if not name:
                     log.warn('cannot find leak, try another way')
@@ -127,7 +124,6 @@ class PwnContext:
                 
         if base > 0 and leak != base:
             log.info(f"{name}: leak = {leak:#x}, base = {base:#x}, diff = {leak - base}")
-            log.warn("don't forget to set all parameters when runnning with remote")
         elif name != '':
             log.info(f"{name}: leak = {leak:#x}")
         elif not self.proc:
