@@ -5,12 +5,12 @@ NC = 1
 SSH = 2
 
 class IOContext:
-    def __init__(self, args, chall, prefix, proc=None):
+    def __init__(self, args, chall, prefix, proc=None, conn=None, ssh_conn=None):
         self.args = args
         self.chall = chall
         self.prefix = prefix
-        self.ssh_conn = None
-        self.conn = None
+        self.ssh_conn = ssh_conn
+        self.conn = conn
         self.proc = proc
     
     def __create_remote_connection(self):
@@ -194,5 +194,6 @@ rl   = lambda *a, **k: (_require_ctx(), ioctx.rl(*a, **k))[1]
 rla  = lambda *a, **k: (_require_ctx(), ioctx.rla(*a, **k))[1]
 rln  = lambda *a, **k: (_require_ctx(), ioctx.rln(*a, **k))[1]
 
+urecv = lambda *a, **k: (_require_ctx(), ioctx.conn.unrecv(*a, **k))[1]
 clean = lambda *a, **k: (_require_ctx(), ioctx.conn.clean(*a, **k))[1]
 itrv = lambda *a, **k: (_require_ctx(), ioctx.conn.interactive(*a, **k))[1]
