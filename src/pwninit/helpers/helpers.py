@@ -55,18 +55,26 @@ class PwnContext:
         self._offset = new_offset
         return self._offset
 
-    def resolve(self, symbol):
+    def __find_sym(self, symbol, bin):
         if isinstance(symbol, int):
             return symbol
         elif "+" in symbol:
             func, offset = symbol.split("+")
-            addr = self.elf.sym[func] + int(offset, 0)
+            addr = bin.sym[func] + int(offset, 0)
         elif "-" in symbol:
             func, offset = symbol.split("-")
-            addr = self.elf.sym[func] - int(offset, 0)
+            addr = bin.sym[func] - int(offset, 0)
         else:
-            addr = self.elf.sym[symbol]
+            addr = bin.sym[symbol]
         return addr
+
+    def resolve(self, symbol):
+        for b in (self.libc, self.elf):
+            addr = self.__find_sym(symbol, b)
+            if addr != None:
+                return addr
+        return None
+
     
     def leak(self, leak, leaked=0, name=''):
         start = leak.find(b'0x')
