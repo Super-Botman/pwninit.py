@@ -162,6 +162,9 @@ class IOContext:
             lines.append(self.rl(**kwargs))
         return lines
 
+    def ra(self):
+        return self.conn.recvall()
+
 ioctx = None
 
 def set_ctx(new_ctx: IOContext):
@@ -190,6 +193,7 @@ send = lambda *a, **k: (_require_ctx(), ioctx.send(*a, **k))[1]
 
 recv = lambda *a, **k: (_require_ctx(), ioctx.recv(*a, **k))[1]
 ru   = lambda *a, **k: (_require_ctx(), ioctx.ru(*a, **k))[1]
+ra   = lambda *a, **k: (_require_ctx(), ioctx.ra(*a, **k))[1]
 rl   = lambda *a, **k: (_require_ctx(), ioctx.rl(*a, **k))[1]
 rla  = lambda *a, **k: (_require_ctx(), ioctx.rla(*a, **k))[1]
 rln  = lambda *a, **k: (_require_ctx(), ioctx.rln(*a, **k))[1]

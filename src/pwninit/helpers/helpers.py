@@ -70,7 +70,11 @@ class PwnContext:
 
     def resolve(self, symbol):
         for b in (self.libc, self.elf):
-            addr = self.__find_sym(symbol, b)
+            try:
+                addr = self.__find_sym(symbol, b)
+            except:
+                continue
+            
             if addr != None:
                 return addr
         return None

