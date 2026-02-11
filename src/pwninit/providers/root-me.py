@@ -2,8 +2,14 @@ import requests
 import subprocess
 import re
 import os
+import hashlib
+import hmac
+import time
+import json
+import re
+from urllib.parse import urljoin
 from pwn import ssh, success, context, log
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse, parse_qs, urlencode
 from ..config import config
 
 
@@ -43,10 +49,76 @@ def extract_ssh_credentials(html_content):
 
     password, host, port = match.groups()
     return password, host, int(port)
-
+def solve_anubis_challenge(session, url):
+    """Solve Anubis anti-bot challenge"""
+    
+    progress = log.progress("Anubis Challenge")
+    
+    # Get challenge page
+    progress.status("Fetching challenge...")
+    response = session.get(url)
+    
+    # Extract challenge data
+    preact_match = re.search(
+        r'<script id="preact_info" type="application/json">(.+?)</script>', 
+        response.text, 
+        re.DOTALL
+    )
+    
+    if not preact_match:
+        progress.success("No challenge found (already bypassed)")
+        return response
+    
+    preact_data = json.loads(preact_match.group(1))
+    challenge_string = preact_data['challenge']
+    difficulty = preact_data['difficulty']
+    redir_url = preact_data['redir']
+    
+    # Compute SHA256 hash
+    progress.status("Computing hash...")
+    result = hashlib.sha256(challenge_string.encode()).hexdigest()
+    
+    # Wait for required time
+    wait_time = (difficulty * 125) / 1000.0
+    progress.status(f"Waiting {wait_time}s...")
+    time.sleep(wait_time)
+    
+    # Build submission URL
+    parsed_original = urlparse(response.url)
+    base = f"{parsed_original.scheme}://{parsed_original.netloc}"
+    pass_url = urljoin(base, redir_url) if not redir_url.startswith('http') else redir_url
+    
+    parsed = urlparse(pass_url)
+    params = parse_qs(parsed.query)
+    params['result'] = [result]
+    new_query = urlencode(params, doseq=True)
+    pass_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{new_query}"
+    
+    # Submit solution
+    progress.status("Submitting solution...")
+    final_response = session.get(pass_url, allow_redirects=True)
+    
+    # Check result
+    if final_response.status_code == 200 and "Oh noes!" not in final_response.text:
+        progress.success("Challenge bypassed!")
+    else:
+        progress.failure("Challenge failed")
+        error_match = re.search(r'<p>(.+?)</p>', final_response.text)
+        if error_match:
+            log.error(f"Server response: {error_match.group(1)}")
+    
+    return final_response
 
 def run(url, path):
     validate_url(url)
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+    })
 
     try:
         api_key = config.get_rootme_api_key()
@@ -55,7 +127,7 @@ def run(url, path):
 
     cookies = {"api_key": api_key}
     try:
-        resp = requests.get(
+        resp = session.get(
             "https://api.www.root-me.org/login", cookies=cookies, timeout=30)
         resp.raise_for_status()
     except requests.exceptions.RequestException as e:
@@ -67,10 +139,8 @@ def run(url, path):
     except (KeyError, IndexError, ValueError) as e:
         log.error(f"Failed to parse authentication response: {e}")
 
-    cookies = {"spip_session": spip_session}
     try:
-        resp = requests.get(url, cookies=cookies, timeout=30)
-        resp.raise_for_status()
+        resp = solve_anubis_challenge(session, url)
     except requests.exceptions.RequestException as e:
         log.error(f"Failed to fetch challenge page: {e}")
 

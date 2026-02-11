@@ -57,7 +57,7 @@ def _solve_redpwn(data):
         log.error(f"Proof of work failed (redpwn): {data}")
     
     arg = arg[0]
-    p = run([binary, arg], stdout=PIPE, stderr=DEVNULL)
+    p = run([binary, 'solve', arg], stdout=PIPE, stderr=DEVNULL)
     if p.returncode != 0:
         log.error(f"Proof of work failed (redpwn): {data}")
     
@@ -69,11 +69,13 @@ def _solve_kctf(data):
         return None
 
     arg = re.findall(rb"\) solve (.+)\n", data)
+    print(arg)
     if len(arg) == 0:
         log.error(f"Proof of work failed (kctf): {data}")
     
     arg = arg[0]
     p = run([binary, arg], stdout=PIPE, stderr=DEVNULL)
+    print(p)
     if p.returncode != 0:
         log.error(f"Proof of work failed (kctf): {data}")
     

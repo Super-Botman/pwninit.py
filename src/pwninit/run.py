@@ -23,12 +23,12 @@ def addr_type(value):
             return SSH, user, password, ip, int(port)
         else:
             ip = addr
-            return SSH, user, password, ip, 22
+            return [SSH, user, password, ip, 22]
     elif ":" in value:
         ip, port = value.split(":", 1)
         if ip == '':
             return NC, 'localhost', int(port)
-        return NC, ip, int(port)
+        return [NC, ip, int(port)]
     else:
         raise argparse.ArgumentTypeError(
             "Invalid remote format. Expected 'ip:port', 'user@ip', or 'user:pass@ip:port'."

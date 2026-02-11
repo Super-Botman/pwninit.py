@@ -32,7 +32,10 @@ class IOContext:
 
 
     def __create_ssh_process(self):
-        chall_path = str(Path(self.args.path) / self.chall)
+        if self.args.path:
+            chall_path = str(Path(self.args.path) / self.chall)
+        else:
+            chall_path = self.chall
         try:
             if self.args.debug:
                 return gdb.debug(chall_path, ssh=self.ssh_conn)
@@ -70,9 +73,10 @@ class IOContext:
 
             if self.args.remote:
                 if self.args.remote[0] == SSH:
-                    self.ssh_conn = self.__create_remote_connection()
                     if not self.ssh_conn:
-                        return 1
+                        self.ssh_conn = self.__create_remote_connection()
+                        if not self.ssh_conn:
+                            return 1
                     io = self.__create_ssh_process()
                 else:
                     io = self.__create_remote_connection()
@@ -87,6 +91,9 @@ class IOContext:
         self.conn.close()
         self.conn = None
         return self.connect()
+
+    def close(self):
+        self.conn.close()
 
     def encode(self, data):
         if type(data) == int:
@@ -175,14 +182,22 @@ def _require_ctx():
     if ioctx is None:
         raise RuntimeError("PwnContext not initialized (call set_ctx first)")
 
-def connect(default=False):
+def connect(host=None, port=None, default=False):
     global ioctx
+
+    if host is not None:
+        ioctx.args.remote[1] = host
+
+    if port is not None:
+        ioctx.args.remote[2] = port
+
     io = IOContext(ioctx.args, ioctx.chall, ioctx.prefix, ioctx.conn)
     if default:
         ioctx = io
     return io.connect()
 
 reconnect = lambda *a, **k: (_require_ctx(), ioctx.reconnect(*a, **k))[1]
+close = lambda *a, **k: (_require_ctx(), ioctx.close(*a, **k))[1]
 
 prompt = lambda *a, **k: (_require_ctx(), ioctx.prompt(*a, **k))[1]
 
