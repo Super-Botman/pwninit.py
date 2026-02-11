@@ -177,11 +177,12 @@ def run(url, path):
         log.error(f"Failed to create directories: {e}")
 
     try:
-        files = s.system("ls").recvall()[:-1]
-        files = files.decode().split(" ")
+        files = s.run("ls -l").recvall().decode().split('\n')[1:-1]
         for f in files:
+            f = f.split(' ')[-1]
             if f != "":
                 s.download(f, chall_path / os.path.basename(f))
+                download.status(f'downloading {f}')
 
         libs = s.system(f'ldd {chall_name}').recvall()
         libs = libs.decode().replace("\t", "").split("\n")[:-1]
@@ -189,13 +190,13 @@ def run(url, path):
         for l in libs:
             if "No such file or directory" not in s.system("ls % s" % l).recvall().decode().strip():
                 s.download(l, chall_path / os.path.basename(l))
+                download.status(f'downloading {l}')
 
     except Exception as e:
         log.error(f"Failed to download files via SSH: {e}")
 
-    status(download, "ld downloaded successfully")
-
     context.log_level = 'info'
     download.success("Files saved")
 
+    s.close()
     return chall_path
