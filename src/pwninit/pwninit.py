@@ -218,7 +218,9 @@ def parse_top_args(top_args):
     parser = argparse.ArgumentParser(
         description="pwninit - CTF binary exploitation setup tool",
     )
-    parser.add_argument("--list-plugins", '-l', action="store_true")
+    parser.add_argument("--list-plugins", '-l', help='list all available provider and setup functions', action="store_true")
+    parser.add_argument("--provider", '-p')
+    parser.add_argument("--setup", '-s')
     return parser.parse_args(top_args)
 
 

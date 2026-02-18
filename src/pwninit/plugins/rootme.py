@@ -94,7 +94,7 @@ class Plugin(Plugin):
     provide_args = [
         arg("url", help="Root-me challenge URL"),
         arg("--api-key", help="Override root-me API key (default: from config)", default=None),
-        arg("--path", help="Set the relative path where all the files will be downloaded (default: categorie/name)")
+        arg("--path", help="Relative path of storage for the chall files (default: categorie/name)")
     ]
 
     def provide(self, args, path):

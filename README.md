@@ -47,35 +47,33 @@ Initialize a pwn challenge environment:
 # Basic usage - scan current directory for binaries
 pwninit
 
+# List Plugins
+pwninit -l
+
 # Fetch challenge from provider
-pwninit -p https://www.root-me.org/fr/Challenges/App-Systeme/ELF-x86-Stack-buffer-overflow-basic-1
+pwninit -p rootme https://www.root-me.org/fr/Challenges/App-Systeme/ELF-x86-Stack-buffer-overflow-basic-1
 
 # Fetch libc from docker provider
 pwninit -p docker
 
-# Run utilities during setup  
-pwninit -u menu
+# Set args for providers
+pwninit -p docker -tag 'chall_name'
 ```
 
 **Options:**
 - `-p, --provider <provider>` - Fetch challenge from URL or provider
-- `-u, --utils <utils>` - Comma-separated list of utilities to run
+- `-s, --setup <utils>` - Comma-separated list of utilities to run
 
 ### Configuration
 
 pwninit supports configuration through `~/.config/pwninit.conf`:
 
 ```ini
-# Author name for generated files
 author=YourName
-
-# Root-me provider settings
-rootme_api_key=your_api_key_here
 ```
 
 You can also use environment variables:
 - `PWNINIT_AUTHOR` - Override author name
-- `ROOTME_API_KEY` - Root-me API key for provider authentication
 
 ### run - Exploit Execution  
 
@@ -137,52 +135,6 @@ pwninit creates the following files:
 - **exploit.py** - Main exploit template with binary and libc paths
 - **notes.md** - Documentation template with checksec output and metadata
 - **Patched binary** - Original binary patched with correct libc/linker
-
-## Providers
-
-Extend pwninit with custom challenge sources:
-
-```python
-# src/pwninit/providers/custom.py
-# args: arguments passed to pwninit
-# path: the actual path
-def run(args, path):
-    # Setup other things for the challenge (libc, fetching challs from rootme, ...)
-    return challenge_path
-```
-
-Built-in providers:
-- **docker** - Build the image and fetch libc
-- **rootme** - Fetch the bin from the ssh and libc
-
-## Utilities  
-
-Add custom utilities for common tasks:
-
-```python  
-# src/pwninit/utils/custom.py
-# files: generated files from templates
-# bins: binary files found in the path
-# path: the actual path
-def run(files, bins, path):
-    # Edit exploit.py/notes.md or add files to complete the setup (kernel challenges, menu interaction functions, ...)
-    return files
-```
-
-Built-in utilities:
-- **menu** - Generate menu interaction functions
-
-## Project Structure
-
-```
-src/pwninit/
-├── pwninit.py      # Main challenge setup logic
-├── run.py          # Exploit execution runner  
-├── utils.py        # Utils for easier exploit dev  
-├── providers/      # Challenge source providers
-├── scripts/        # Setup utilities
-└── templates/      # File templates
-```
 
 ## TODO
 
