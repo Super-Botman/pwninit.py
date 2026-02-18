@@ -17,7 +17,7 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 dependencies = [
-  "pwntools",
+  "pwntools @ git+https://github.com/Gallopsled/pwntools.git@dev",
   "argparse",
   "docker",
   "mako"

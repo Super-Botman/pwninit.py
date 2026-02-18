@@ -1,31 +1,19 @@
 import argparse
+import datetime
+import os
 import re
 import shutil
-import datetime
-import importlib
-import os
 import sys
 from pathlib import Path
-from pwn import libcdb, ELF, log, context
+
 from mako.template import Template
+from pwn import ELF, context, libcdb, log
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
 from .config import config
+from .plugins import run_plugins, print_plugin_list
 
-
-def utils_type(value: str) -> list:
-    return sum([value.replace(" ", "").split(",")], [])
-
-
-def provider_type(value: str) -> list:
-    url_pattern = r"(^https?:\/\/(?:www\.)?)([-a-zA-Z0-9@:%._\+~#=]{1,256})(\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&\/=]*)$)"
-    values = re.findall(url_pattern, value)
-
-    if len(values) != 0 and len(values[0]) == 3:
-        return values[0]
-    else:
-        return ["", value, ""]
-
+TOP_FLAGS = {"-p", "--provider", "-s", "--setup", "--list-plugins", '-l'}
 
 def find_bins(dir: Path) -> list:
     files = [
@@ -137,45 +125,10 @@ def gen_files(path, bins) -> dict:
         chall=chall,
         date=datetime.datetime.now().strftime("%d/%m/%Y"),
         checksecs=checksecs,
-        author=config.get_author(),
+        author=config.get('author', 'pwner', 'PWNINIT_AUTHOR'),
     )
 
     return files
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="pwninit")
-    parser.add_argument(
-        "-p",
-        "--provider",
-        action="store",
-        metavar="provider",
-        type=provider_type,
-        help="fetch chall from url",
-    )
-    parser.add_argument(
-        "-u",
-        "--utils",
-        action="store",
-        metavar="utils",
-        type=utils_type,
-        help="utils to run on the binary",
-    )
-    return parser.parse_args()
-
-
-def run_provider(args, path: Path) -> Path:
-    if not args.provider:
-        return path
-
-    provider_name = args.provider[1]
-    try:
-        return importlib.import_module("pwninit.providers." + provider_name).run(
-            "".join(args.provider), path
-        )
-    except ModuleNotFoundError:
-        log.error("Provider '%s' not found" % provider_name)
-    except Exception as e:
-        log.error(f"Error running provider '{provider_name}': {str(e)}")
 
 
 def process_binaries(path: Path) -> dict | None:
@@ -205,22 +158,6 @@ def setup_libc_ld(sorted_bins: dict, path: Path) -> bool:
     return True
 
 
-def run_utilities(args, files: dict, sorted_bins: dict, path: Path) -> dict:
-    if not args.utils:
-        return files
-
-    for util_name in args.utils:
-        try:
-            files = importlib.import_module("pwninit.utils." + util_name).run(
-                files, sorted_bins, path
-            )
-        except ModuleNotFoundError:
-            log.error("Utility '%s' not found" % util_name)
-        except Exception as e:
-            log.error(f"Error running utility '{util_name}': {str(e)}")
-    return files
-
-
 def write_output_files(files: dict, path: Path) -> bool:
     for file in files:
         try:
@@ -234,23 +171,103 @@ def write_output_files(files: dict, path: Path) -> bool:
     return True
 
 
+def split_argv(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+
+    provider = []
+    setup = []
+    top_args = []
+
+    i = 0
+    while i < len(argv):
+        if argv[i] in ("-p", "--provider"):
+            i += 1
+            if i >= len(argv):
+                log.error("-p requires a plugin name")
+                break
+            name = argv[i]
+            i += 1
+            plugin_args = []
+            while i < len(argv) and argv[i] not in TOP_FLAGS:
+                plugin_args.append(argv[i])
+                i += 1
+            provider.append((name, plugin_args))
+
+        elif argv[i] in ("-s", "--setup"):
+            i += 1
+            if i >= len(argv):
+                log.error("-u requires a plugin name")
+                break
+            name = argv[i]
+            i += 1
+            plugin_args = []
+            while i < len(argv) and argv[i] not in TOP_FLAGS:
+                plugin_args.append(argv[i])
+                i += 1
+            setup.append((name, plugin_args))
+
+        else:
+            top_args.append(argv[i])
+            i += 1
+
+    return top_args, provider, setup
+
+
+def parse_top_args(top_args):
+    parser = argparse.ArgumentParser(
+        description="pwninit - CTF binary exploitation setup tool",
+    )
+    parser.add_argument("--list-plugins", '-l', action="store_true")
+    return parser.parse_args(top_args)
+
+
+def parse_plugin_args(plugin, raw_args):
+    parser = argparse.ArgumentParser(
+        prog=plugin.name,
+        description=plugin.description,
+    )
+    for a in plugin.args:
+        a = dict(a)
+        name = a.pop("name")
+        short = a.pop("short", None)
+        names = [short, name] if short else [name]
+        parser.add_argument(*names, **a)
+
+    return parser.parse_args(raw_args)
+
+def parse_args():
+    top_args, provider, setup = split_argv()
+    args = parse_top_args(top_args)
+    args.provider = provider
+    args.setup = setup
+    return args
+
 def cli() -> int:
     args = parse_args()
+    path = Path(".")
 
-    path = run_provider(args, Path("."))
-    if not path:
-        return 1
+    if args.list_plugins:
+        print_plugin_list()
+        return 0
+
+    if args.provider:
+        for p in args.provider:
+            ret = run_plugins(p, 'provide', path)
+            if ret:
+                path = ret
 
     sorted_bins = process_binaries(path)
     if sorted_bins:
-
         if not setup_libc_ld(sorted_bins, path):
             return 1
         files = gen_files(path, sorted_bins)
 
-        files = run_utilities(args, files, sorted_bins, path)
-        if files is None:
-            return 1
+        if args.setup:
+            for s in args.setup:
+                ret = run_plugins(s, 'setup', sorted_bins)
+                if ret:
+                    files.update(ret)
 
         if not write_output_files(files, path):
             return 1

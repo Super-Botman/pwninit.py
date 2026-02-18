@@ -88,15 +88,20 @@ class PwnContext:
         if start > 0:
             leak = leak[start:]
             for i in leak[2:]:
-                try: int(chr(i), 16); end += 1
-                except: break
+                try:
+                    int(chr(i), 16)
+                    end += 1
+                except:
+                    break
             leak = leak[:end]
             leak = int(leak, 16)
         else:
             if len(leak) <= 8:
                 leak = upack(leak)
             else:
-                if leak[-1] == 0xa: leak = leak[:-1]
+                if leak[-1] == 0xa:
+                    leak = leak[:-1]
+
                 for i in range(len(leak)):
                     for j in range(6,8,1):
                         l = upack(leak[i:i+j])
@@ -120,12 +125,12 @@ class PwnContext:
             base = leak
 
         var = getattr(self, name, False)
-        if var != False:
-            if type(getattr(var, 'address', False)) == int:
+        if var:
+            if type(getattr(var, 'address', False)) is int:
                 var.address = base
             else:
                 setattr(self, name, base)
-                
+
         if base > 0 and leak != base:
             log.info(f"{name}: leak = {leak:#x}, base = {base:#x}, diff = {leak - base}")
         elif name != '':
@@ -161,6 +166,7 @@ class PwnContext:
                     base = getattr(self.proc, f'{name}_mapping')().address
 
                 return name, base
+
         return name, base
 
     def ropchain(self, chain, ret=True):

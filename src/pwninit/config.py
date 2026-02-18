@@ -32,13 +32,6 @@ class Config:
     def get_author(self):
         return self.get('author', '0xB0tm4n', 'PWNINIT_AUTHOR')
 
-    def get_rootme_api_key(self):
-        api_key = self.get('rootme_api_key', env_var='ROOTME_API_KEY')
-        if not api_key:
-            raise ValueError(
-                "Root-me API key not found. Set ROOTME_API_KEY environment variable or add rootme_api_key=your_key to ~/.config/pwninit.conf")
-        return api_key
-
     def create_default_config(self):
         self.config_file.parent.mkdir(parents=True, exist_ok=True)
 
