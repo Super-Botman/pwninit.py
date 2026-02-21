@@ -6,3 +6,4 @@ tests
 dev_env
 *.pyc
 __pycache__
+TODO.md

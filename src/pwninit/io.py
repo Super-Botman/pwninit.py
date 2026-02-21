@@ -1,13 +1,18 @@
-from pwn import process, log, gdb, ssh, remote, context, ELF, pause
+import subprocess
 from pathlib import Path
+
+from pwn import ELF, context, gdb, log, pause, process, remote, ssh
+
+from pwninit.kernel import inject
 
 NC = 1
 SSH = 2
 
 class IOContext:
-    def __init__(self, args, chall, prefix, proc=None, conn=None, ssh_conn=None):
+    def __init__(self, args, chall, kernel, prefix, proc=None, conn=None, ssh_conn=None):
         self.args = args
         self.chall = chall
+        self.kernel = kernel
         self.prefix = prefix
         self.ssh_conn = ssh_conn
         self.conn = conn
@@ -45,8 +50,58 @@ class IOContext:
             log.error("Failed to create SSH process: %s" % str(e))
 
 
+    def __create_kernel_process(self):
+        status = log.progress('compiling exploit')
+        subprocess.run([
+            "make"
+        ])
+        status.success('done')
+
+        status = log.progress('ijecting exploit')
+        if not inject(self.kernel['archive'], "exploit"):
+            status.failure("failed")
+
+        status.success('done')
+
+        cmd = [
+            "qemu-system-x86_64",
+            "-no-reboot", "-cpu", "max",
+            "-net", "none",
+            "-serial", "mon:stdio",
+            "-display", "none",
+            "-monitor", "none",
+            "-append", "console=ttyS0",
+            "-kernel", self.kernel["vmlinuz"],
+            "-initrd", self.kernel["archive"]
+        ]
+
+        if self.args.debug:
+            gdb_script = f'''
+                set architecture i386:x86-64
+                add-symbol-file {self.chall} 0xffffffffc0000000
+                continue
+            '''
+            gdb_script += self.args.gdb_command if self.args.gdb_command else ""
+            cmd.append('-s')
+            cmd.append('-S')
+
+        p = process(cmd)
+
+        if self.args.debug:
+            gdb.attach(
+                target=('localhost', 1234),
+                exe=f'{self.kernel["vmlinuz"]}.elf',
+                gdbscript=gdb_script
+        )
+
+        return p
+        
+
     def __create_local_process(self):
         try:
+            if self.kernel:
+                return self.__create_kernel_process()
+
             gdb_script = self.args.gdb_command if self.args.gdb_command else ""
             if self.args.debug:
                 return gdb.debug([self.chall], gdbscript=gdb_script)

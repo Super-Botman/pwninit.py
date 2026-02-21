@@ -130,11 +130,14 @@ def cli():
     elf, libc = setup_context(args)
 
     elf = elf if isinstance(elf, ELF) else None
-    libc = libc if isinstance(libc, ELF) else None
     binary = elf if isinstance(elf, str) else exploit.CHALL
+    libc = libc if isinstance(libc, ELF) else None
+    archive = exploit.ARCHIVE if hasattr(exploit, "ARCHIVE") else None
+    vmlinuz = exploit.VMLINUZ if hasattr(exploit, "VMLINUZ") else None
+    kernel = {"archive": archive, "vmlinuz": vmlinuz} if archive and vmlinuz else None
     prefix = exploit.PREFIX if hasattr(exploit, "PREFIX") else "> "
 
-    ctx = io.IOContext(args, exploit.CHALL, prefix)
+    ctx = io.IOContext(args, exploit.CHALL, kernel, prefix)
     ctx.connect()
     io.set_ctx(ctx)
 
