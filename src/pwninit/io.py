@@ -52,12 +52,14 @@ class IOContext:
 
     def __create_kernel_process(self):
         status = log.progress('compiling exploit')
-        subprocess.run([
-            "make"
-        ])
+        subprocess.run(
+            ["make"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         status.success('done')
 
-        status = log.progress('ijecting exploit')
+        status = log.progress('injecting exploit')
         if not inject(self.kernel['archive'], "exploit"):
             status.failure("failed")
 

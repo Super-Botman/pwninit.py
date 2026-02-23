@@ -19,15 +19,15 @@ class Plugin(Plugin):
 
         success("connected to ssh")
 
-        download = log.progress("downloading files")
         try:
             context.log_level = "error"
-            files = s.system("ls /challenge").recvall()[:-1]
-            files = files.decode().split(" ")
+            stdout, _ = s.run_to_end('ls -1 /challenge')
+            files = stdout.decode().strip().split('\n')
             for f in files:
                 if f != "":
-                    download.status("Downloading %s" % f)
+                    status = log.progress(f"downloading {f}")
                     s.download_file("/challenge/" + f, os.path.basename(f))
+                    status.success("done")
 
             libs = s.system(f'ldd %s' % "/challenge/" + files[0]).recvall()
             libs = libs.decode().replace("\t", "").split("\n")[:-1]
@@ -40,5 +40,4 @@ class Plugin(Plugin):
         except Exception as e:
             error(f"Failed to download files via SSH: {e}")
 
-        download.success("Files saved")
         return path
