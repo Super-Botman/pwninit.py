@@ -2,11 +2,18 @@ from pwn import log, context, ELF
 import argparse
 import sys
 from pathlib import Path
+
 import pwninit.helpers as helpers
 import pwninit.io as io
+from pwninit.farm import run_farm
 
 sys.path.insert(0, "./")
-import exploit
+try:
+    import exploit
+except:
+    log.warning('no exploit')
+    exit(0)
+    pass
 
 NC = 1
 SSH = 2
@@ -71,6 +78,18 @@ def parse_args():
         help="run with strace and store the strace output into strace.out",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose mode")
+    farm = parser.add_argument_group('farm')
+    farm.add_argument('--farm', action='store_true',
+                  help='run as farm client (AD mode)')
+    farm.add_argument('--server-url', default='http://localhost:5000',
+                  help='farm server URL')
+    farm.add_argument('--server-pass', default='1234',
+                  help='farm server password')
+    farm.add_argument('--attack-period', type=float, default=55,
+                  help='rerun exploit on all teams each N seconds')
+    farm.add_argument('--pool-size', type=int, default=50,
+                  help='max concurrent exploit instances')
+
     args = parser.parse_args()
 
     if args.gdb_command and not args.debug and not args.attach:
@@ -136,6 +155,9 @@ def cli():
     vmlinuz = exploit.VMLINUZ if hasattr(exploit, "VMLINUZ") else None
     kernel = {"archive": archive, "vmlinuz": vmlinuz} if archive and vmlinuz else None
     prefix = exploit.PREFIX if hasattr(exploit, "PREFIX") else "> "
+
+    if args.farm:
+        return run_farm(args, elf, libc, binary, kernel, prefix)
 
     ctx = io.IOContext(args, exploit.CHALL, kernel, prefix)
     ctx.connect()
