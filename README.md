@@ -1,7 +1,6 @@
 # pwninit 🚧 WIP 🚧
 
-We're currently redesigning the whole lib with a better code, a lot of helpers to automate exploitation and a lot more parameters to run the exploits.
----
+## We're currently redesigning the whole lib with a better code, a lot of helpers to automate exploitation and a lot more parameters to run the exploits.
 
 A comprehensive Python toolkit for CTF binary exploitation challenges that streamlines the setup and execution process.
 
@@ -19,12 +18,14 @@ A comprehensive Python toolkit for CTF binary exploitation challenges that strea
 ## Installation
 
 ### Prerequisites
+
 - Python 3.8+
 - patchelf
 - GDB (for debugging)
 - kitty terminal (recommended)
 
 ### Install from source
+
 ```bash
 git clone https://github.com/0xb0tm4n/pwninit.py
 cd pwninit.py
@@ -61,21 +62,11 @@ pwninit -p docker -tag 'chall_name'
 ```
 
 **Options:**
+
 - `-p, --provider <provider>` - Fetch challenge from URL or provider
 - `-s, --setup <utils>` - Comma-separated list of utilities to run
 
-### Configuration
-
-pwninit supports configuration through `~/.config/pwninit.conf`:
-
-```ini
-author=YourName
-```
-
-You can also use environment variables:
-- `PWNINIT_AUTHOR` - Override author name
-
-### run - Exploit Execution  
+### run - Exploit Execution
 
 Execute your exploit with various modes:
 
@@ -86,7 +77,7 @@ run
 # Remote netcat connection
 run -r target.com:1337
 
-# SSH connection  
+# SSH connection
 run -r user:password@target.com:22
 
 # Debug mode with GDB
@@ -106,6 +97,7 @@ run -r target.com:443 --ssl
 ```
 
 **Options:**
+
 - `-r, --remote <addr>` - Remote connection (ip:port for nc, user:pass@ip:port for SSH)
 - `-d, --debug` - Launch with GDB debugger
 - `-s, --strace` - Run with strace, output saved to strace.out
@@ -116,17 +108,25 @@ run -r target.com:443 --ssl
 ### exploit.py - Exploits development
 
 You can use a variety of helpers from `pwninit.utils`:
+
 ```py
-from pwn import *
-from pwninit.utils import *
+from pwninit import *
 
-CHALL = "./bin"
-LIBC = "./libc.so.6"
+Config(
+    binary = "./chall"
+    libc = "./lib.so.6"
+)
 
-def exploit(io, elf, libc=Null):
+def exploit(ctx: PwnContext, ioctx: IOContext):
+    exe = ctx.elf
+    libc = ctx.libc
 
+    # Example usage:
+    # resolve("main")     # get main address
+    # sl(b"payload")      # send line "payload"
+
+    success("all good !")
 ```
-
 
 ## Generated Files
 
@@ -136,10 +136,20 @@ pwninit creates the following files:
 - **notes.md** - Documentation template with checksec output and metadata
 - **Patched binary** - Original binary patched with correct libc/linker
 
+### Configuration
+
+pwninit supports configuration through `~/.config/pwninit.conf`:
+
+```ini
+author=YourName
+```
+
+You can also use environment variables:
+
+- `PWNINIT_AUTHOR` - Override author name
+
 ## TODO
 
-- Add support to different challenge types like args, environment, etc.
 - Handle jails (fuck jails)
 - CTFd provider
-- Add option in run to directly use farm for ADs
 - Add option to run and debug in docker

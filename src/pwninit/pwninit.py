@@ -14,6 +14,16 @@ from pwninit.config import config
 from pwninit.kernel import decompress
 from pwninit.plugins import print_plugin_list, run_plugins
 
+QEMU_DEFAULT = [
+    "qemu-system-x86_64",
+    "-no-reboot", "-cpu", "max",
+    "-net", "none",
+    "-serial", "mon:stdio",
+    "-display", "none",
+    "-monitor", "none",
+    "-append", "console=ttyS0",
+]
+
 TOP_FLAGS = {"-p", "--provider", "-s", "--setup", "--list-plugins", "-l"}
 
 ARCHIVE_MIMES = {
@@ -32,6 +42,14 @@ ARCHIVE_MIMES = {
 
 ARCHIVE_STRINGS = ["cpio", "squashfs", "filesystem", "disk image"]
 
+ELF_MIMES = {
+    "application/x-executable",
+    "application/x-sharedlib",
+    "application/x-pie-executable",
+    "application/x-object",
+}
+
+KERNEL_STRINGS = ["linux kernel", "bzimage", "zimage"]
 
 def is_archive(path: str) -> bool:
     mime = magic_lib.from_file(path, mime=True)
@@ -55,6 +73,11 @@ def is_archive(path: str) -> bool:
 
     return False
 
+def is_elf(path: str) -> bool:
+    return magic_lib.from_file(path, mime=True) in ELF_MIMES
+
+def is_kernel(path: str) -> bool:
+    return any(s in magic_lib.from_file(path).lower() for s in KERNEL_STRINGS)
 
 def find_bins(dir: Path) -> dict:
     files = [
@@ -63,40 +86,40 @@ def find_bins(dir: Path) -> dict:
         if os.path.isfile(os.path.join(dir, f))
     ]
 
-    result = {"elf": [], "vmlinuz": None, "archive": None}
+    result = {"elf": [], "kernel": [], "archive": []}
 
     for file in files:
-        data = open(file, "rb").read()
+        path = str(file)
 
-        if data[:4] == b"\x7fELF":
-            result["elf"].append(str(file))
+        if is_elf(path):
+            result["elf"].append(path)
 
-        if data[0x202:0x206] == b"HdrS":
-            result["vmlinuz"] = str(file)
-            status = log.progress(f"converting {file} to elf")
-            subprocess.run(
-                ["vmlinux-to-elf", file, f'{file}.elf'],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            status.success('done')
+        elif is_kernel(path):
+            result["kernel"].append(path)
+            if not os.path.isfile(f"{file}.elf"):
+                status = log.progress(f"converting {file} to elf")
+                subprocess.run(
+                    ["vmlinux-to-elf", file, f"{file}.elf"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                status.success("done")
 
-        if is_archive(str(file)):
-            result["archive"] = str(file)
+        elif is_archive(path):
+            result["archive"].append(path)
 
     return result
 
-
 def sort_bins(files: dict) -> dict:
     bins = {"libc": [], "ld": [], "challs": []}
-    is_kernel = bool(files["vmlinuz"])
+    is_kernel = bool(files["kernel"])
 
     for f in files["elf"]:
         context.log_level = "error"
         elf = ELF(f, checksec=False)
         context.log_level = "info"
 
-        soname = (elf.dynamic_by_tag("DT_SONAME") or {}).get("soname", "")
+        soname = getattr(elf.dynamic_by_tag("DT_SONAME"), "soname", "")
 
         if soname and ("libc.so.0" in soname or "libc.so.6" in soname):
             bins["libc"].append(f)
@@ -121,21 +144,20 @@ def sort_bins(files: dict) -> dict:
 def process_binaries(path: Path) -> dict | None:
     bins = find_bins(path)
 
-    if not bins["elf"]:
-        return None
-
-    sorted_bins = sort_bins(bins)
-
-    if bins["vmlinuz"]:
-        sorted_bins["vmlinuz"] = [bins["vmlinuz"]]
-    if bins["archive"]:
-        sorted_bins["archive"] = [bins["archive"]]
-
-    for key, val in sorted_bins.items():
+    for key, val in bins.items():
         if val:
             log.success("%s found: %s" % (key, ", ".join(val)))
 
-    return sorted_bins
+
+    if not bins["elf"] and not bins['kernel']:
+        return None
+    else:
+        bins["elf"] = sort_bins(bins)
+        for key, val in bins["elf"].items():
+            if val:
+                log.success("%s: %s" % (key, ", ".join(val)))
+
+    return bins
 
 
 def fetch_ld(bins: dict, path: Path) -> bool:
@@ -164,6 +186,8 @@ def open_file(path: Path):
             return None
     return open(path, "w")
 
+def relpath(bins, type):
+    return "./" + os.path.basename(bins[type][0]) if bins.get(type) else None
 
 def gen_files(path: Path, bins: dict) -> dict:
     templates = Path(os.path.dirname(os.path.realpath(__file__))) / "templates"
@@ -180,11 +204,17 @@ def gen_files(path: Path, bins: dict) -> dict:
 
     files = {}
 
+    QEMU_DEFAULT.append('-kernel')
+    QEMU_DEFAULT.append(relpath(bins, "kernel"))
+    QEMU_DEFAULT.append('-initrd')
+    QEMU_DEFAULT.append(relpath(bins, "archive"))
+
     files["exploit.py"] = Template(filename=str(templates / "exploit.py")).render(
-        chall="./" + os.path.basename(bins["challs"][0]),
-        libc="./" + os.path.basename(bins["libc"][0]) if bins.get("libc") else None,
-        archive="./" + os.path.basename(bins["archive"][0]) if bins.get("archive") else None,
-        vmlinuz="./" + os.path.basename(bins["vmlinuz"][0]) if bins.get("vmlinuz") else None,
+        binary=relpath(bins["elf"], "challs"),
+        libc=relpath(bins["elf"], "libc"),
+        archive=relpath(bins,"archive"),
+        kernel=relpath(bins,"kernel"),
+        qemu=QEMU_DEFAULT if relpath(bins, "archive") else None
     )
 
     files["notes.md"] = Template(filename=str(templates / "notes.md")).render(
@@ -194,16 +224,17 @@ def gen_files(path: Path, bins: dict) -> dict:
         author=config.get("author", "pwner", "PWNINIT_AUTHOR"),
     )
 
-    if bins.get("vmlinuz"):
+    if bins.get("kernel") and relpath(bins['elf'], 'challs'):
         files["exploit.c"] = Template(filename=str(templates / "exploit.c")).render(
-            kernel_module = os.path.basename(bins["challs"][0].split('.ko')[0])
+            kernel_module = relpath(bins['elf'], 'challs').split('.ko')[0][2:]
         )
         files["Makefile"] = Template(filename=str(templates / "Makefile")).render()
 
     return files
 
 
-def setup_libc_ld(sorted_bins: dict, path: Path) -> bool:
+def setup_libc_ld(bins: dict, path: Path) -> bool:
+    sorted_bins = bins["elf"]
     if sorted_bins["libc"] and not sorted_bins["ld"]:
         log.info("Attempting to fetch ld for libc...")
         if not fetch_ld(sorted_bins, path):
@@ -304,7 +335,7 @@ def cli() -> int:
         log.info("No binaries found")
         return 1
 
-    is_kernel = bool(sorted_bins.get("vmlinuz"))
+    is_kernel = bool(sorted_bins.get("kernel"))
 
     if not is_kernel:
         if not setup_libc_ld(sorted_bins, path):

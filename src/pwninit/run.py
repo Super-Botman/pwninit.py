@@ -1,128 +1,109 @@
-from pwn import log, context, ELF
 import argparse
+import importlib.util
 import sys
-from pathlib import Path
+
+from pwn import ELF, context, log
 
 import pwninit.helpers as helpers
 import pwninit.io as io
 from pwninit.farm import run_farm
 
-sys.path.insert(0, "./")
-try:
-    import exploit
-except:
-    log.warning('no exploit')
-    exit(0)
-    pass
-
-NC = 1
-SSH = 2
 
 def addr_type(value):
     if "@" in value:
         creds, addr = value.split("@", 1)
-        if ":" in creds:
-            user, password = creds.split(":", 1)
-        else:
-            user, password = creds, None
-        if ":" in addr:
-            ip, port = addr.split(":", 1)
-            return SSH, user, password, ip, int(port)
-        else:
-            ip = addr
-            return [SSH, user, password, ip, 22]
+        user, password = creds.split(":", 1) if ":" in creds else (creds, None)
+        host, port = addr.split(":", 1) if ":" in addr else (addr, 22)
+        return io.ssh(user, password, host, int(port))
     elif ":" in value:
-        ip, port = value.split(":", 1)
-        if ip == '':
-            return NC, 'localhost', int(port)
-        return [NC, ip, int(port)]
+        host, port = value.split(":", 1)
+        return io.plain(host or "localhost", int(port))
     else:
         raise argparse.ArgumentTypeError(
-            "Invalid remote format. Expected 'ip:port', 'user@ip', or 'user:pass@ip:port'."
+            "Invalid format. Expected 'ip:port', 'user@ip', or 'user:pass@ip:port'."
         )
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Runner for pwn exploits.")
-    parser.add_argument(
-        "-r", "--remote",
+
+    # --- Target ---
+    target = parser.add_argument_group("target")
+    target.add_argument(
+        "-r",
+        "--remote",
         action="store",
         metavar="addr",
         type=addr_type,
-        help="run remotely (ip:port for nc and user:password@ip for ssh)",
+        help="run remotely (ip:port for nc, user:password@ip for ssh)",
     )
-    parser.add_argument(
-        "-l", "--local-bin",
+    target.add_argument(
+        "-l",
+        "--local",
         action="store_true",
-        help="start the chall as a server, by default remote port is 1337 and can be changed using -r :port"
+        help="start the chall as a server (default port 1337, override with -r :port)",
     )
-    parser.add_argument("--ssl", action="store_true", help="enable ssl")
-    parser.add_argument(
-        '--path',
+    target.add_argument("-S", "--ssl", action="store_true", help="enable ssl")
+    target.add_argument(
+        "-p",
+        "--path",
         action="store",
         metavar="'/challenge'",
-        help="set a path where challenge is located when using remote ssh"
+        help="challenge path on remote ssh host",
     )
-    parser.add_argument("-d", "--debug", action="store_true", help="enable debug mode")
-    parser.add_argument("-a", "--attach", action="store_true", help="enable debug mode (gdb attach)")
-    parser.add_argument(
-        "--gdb-command",
+
+    # --- Debug ---
+    debug = parser.add_argument_group("debug")
+    debug.add_argument("-d", "--debug", action="store_true", help="enable debug mode")
+    debug.add_argument("-a", "--attach", action="store_true", help="attach gdb")
+    debug.add_argument(
+        "-g",
+        "--gdb-cmd",
         action="store",
         metavar="'c'",
-        help="set a command to run at the start of gdb work only if debug is set",
+        help="gdb command to run on startup (requires --debug or --attach)",
     )
-    parser.add_argument(
+    debug.add_argument(
         "-s",
         "--strace",
         action="store_true",
-        help="run with strace and store the strace output into strace.out",
+        help="run with strace, output saved to strace.out",
     )
+
+    # --- Misc ---
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose mode")
-    farm = parser.add_argument_group('farm')
-    farm.add_argument('--farm', action='store_true',
-                  help='run as farm client (AD mode)')
-    farm.add_argument('--server-url', default='http://localhost:5000',
-                  help='farm server URL')
-    farm.add_argument('--server-pass', default='1234',
-                  help='farm server password')
-    farm.add_argument('--attack-period', type=float, default=55,
-                  help='rerun exploit on all teams each N seconds')
-    farm.add_argument('--pool-size', type=int, default=50,
-                  help='max concurrent exploit instances')
+
+    # --- Farm ---
+    farm = parser.add_argument_group("farm")
+    farm.add_argument(
+        "-f", "--farm", action="store_true", help="run as farm client (AD mode)"
+    )
+    farm.add_argument(
+        "-u", "--url", default="http://localhost:5000", help="farm server URL"
+    )
+    farm.add_argument("-k", "--password", default="1234", help="farm server password")
+    farm.add_argument(
+        "-t",
+        "--period",
+        type=float,
+        default=55,
+        help="rerun exploit on all teams every N seconds",
+    )
+    farm.add_argument(
+        "-j", "--jobs", type=int, default=50, help="max concurrent exploit instances"
+    )
 
     args = parser.parse_args()
 
-    if args.gdb_command and not args.debug and not args.attach:
-        log.error("--gdb-command can only be used with --debug")
-
+    if args.gdb_cmd and not args.debug and not args.attach:
+        log.error("--gdb-cmd requires --debug or --attach")
     if args.debug and args.attach:
-        log.error("--debug and --attach are incompatible")
-        
+        log.error("--debug and --attach are mutually exclusive")
     if args.path and not args.remote:
-        log.error("--path can only be used with -r")
+        log.error("--path requires -r")
 
     return args
 
-
-def setup_context(args):
-    context.log_level = "DEBUG" if args.verbose else "INFO"
-
-    libc = exploit.LIBC if hasattr(exploit, "LIBC") else None
-
-    try:
-        context.binary = ELF(exploit.CHALL)
-    except Exception as e:
-        log.warning("Could not load ELF: %s" % str(e))
-
-    if libc is None:
-        libc = context.binary.libc
-    else:
-        try:
-            libc = ELF(libc)
-        except Exception as e:
-            log.warning("Could not load LIBC: %s" % str(e))
-
-    return context.binary, libc
 
 def save_flag(flag):
     try:
@@ -132,43 +113,58 @@ def save_flag(flag):
     except Exception as e:
         log.warning("Could not save flag to file: %s" % str(e))
 
-    # Rename the folder containing the exploit by appending a checkmark
-    try:
-        cwd = Path.cwd()
-        if not cwd.name.endswith("✅"):
-            new_path = cwd.parent / (cwd.name + "✅")
-            if new_path.exists():
-                log.warning("Cannot rename folder: target exists")
-            else:
-                cwd.rename(new_path)
-    except Exception as e:
-        log.warning("Could not rename folder: %s" % str(e))
 
 def cli():
     args = parse_args()
-    elf, libc = setup_context(args)
 
-    elf = elf if isinstance(elf, ELF) else None
-    binary = elf if isinstance(elf, str) else exploit.CHALL
-    libc = libc if isinstance(libc, ELF) else None
-    archive = exploit.ARCHIVE if hasattr(exploit, "ARCHIVE") else None
-    vmlinuz = exploit.VMLINUZ if hasattr(exploit, "VMLINUZ") else None
-    kernel = {"archive": archive, "vmlinuz": vmlinuz} if archive and vmlinuz else None
-    prefix = exploit.PREFIX if hasattr(exploit, "PREFIX") else "> "
+    spec = importlib.util.spec_from_file_location("exploit", "exploit.py")
+    mod = importlib.util.module_from_spec(spec)
+
+    try:
+        spec.loader.exec_module(mod)
+        from pwninit import config
+    except FileNotFoundError:
+        log.warn("exploit not found")
+        sys.exit(1)
+
+    exploit = getattr(mod, "exploit", None)
+
+    if not config:
+        log.warn("config not found")
+        sys.exit(1)
+
+    if not config.chall:
+        log.warn("invalide config, chall not set")
+
+    context.log_level = "DEBUG" if args.verbose else "INFO"
+
+    if config.binary:
+        try:
+            context.binary = ELF(config.binary)
+        except Exception as e:
+            log.warning("Could not load binary: %s" % str(e))
+
+    if config.libc:
+        try:
+            libc = ELF(config.libc)
+        except Exception as e:
+            log.warning("Could not load libc: %s" % str(e))
+    elif context.binary:
+        libc = context.binary.libc
 
     if args.farm:
-        return run_farm(args, elf, libc, binary, kernel, prefix)
+        return run_farm(args, config, exploit)
 
-    ctx = io.IOContext(args, exploit.CHALL, kernel, prefix)
+    ctx = io.IOContext(args, config)
     ctx.connect()
     io.set_ctx(ctx)
 
-
-    ctx = helpers.PwnContext(io.ioctx.proc, elf, libc, binary, prefix)
-    helpers.set_ctx(ctx)
+    if context.binary:
+        ctx = helpers.PwnContext(io.ioctx.proc, context.binary, libc)
+        helpers.set_ctx(ctx)
 
     try:
-        flag = exploit.exploit(helpers.pwnctx, io.ioctx)
+        flag = exploit(helpers.pwnctx, io.ioctx)
         if flag:
             log.success("flag: %s" % flag)
             save_flag(flag)

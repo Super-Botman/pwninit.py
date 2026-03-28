@@ -5,11 +5,10 @@ import math
 from pwninit.io import *
 
 class PwnContext:    
-    def __init__(self, proc, elf, libc, binary, prefix):
+    def __init__(self, proc, elf, libc, prefix=None):
         self.proc = proc
         self.elf = elf
         self.libc = libc
-        self.binary = binary
         self.prefix = prefix
         self._offset = None
         self._canary = None

@@ -1,46 +1,52 @@
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from pwn import ELF, context, gdb, log, pause, process, remote, ssh
 
 from pwninit.kernel import inject
 
-NC = 1
-SSH = 2
+
+@dataclass
+class plain:
+    host: str
+    port: int
+
+@dataclass
+class ssh:
+    user: str
+    password: str
+    host: str
+    port: int = 22
 
 class IOContext:
-    def __init__(self, args, chall, kernel, prefix, proc=None, conn=None, ssh_conn=None):
+    def __init__(self, args, config, prefix=None, proc=None, conn=None, ssh_conn=None):
         self.args = args
-        self.chall = chall
-        self.kernel = kernel
+        self.config = config
         self.prefix = prefix
         self.ssh_conn = ssh_conn
         self.conn = conn
         self.proc = proc
     
     def __create_remote_connection(self):
-        conn_type = self.args.remote[0]
-
-        if conn_type == NC:
-            ip, port = self.args.remote[1], self.args.remote[2]
+        if isinstance(self.args.remote, plain):
             try:
-                return remote(ip, port, ssl=self.args.ssl)
+                return remote(self.args.remote.host, self.args.remote.port, ssl=self.args.ssl)
             except Exception as e:
-                log.error("Failed to connect to %s:%d - %s" % (ip, port, str(e)))
+                log.error("Failed to connect to %s:%d - %s" % (self.args.remote.host, self.args.remote.port, str(e)))
 
-        elif conn_type == SSH:
-            user, password, ip, port = self.args.remote[1:5]
+        elif isinstance(self.args.remote, ssh):
             try:
-                return ssh(user=user, password=password, host=ip, port=port)
+                return ssh(user=self.args.remote.user, password=self.args.remote.password, host=self.args.remote.host, port=self.args.remote.port)
             except Exception as e:
                 log.error("SSH connection failed: %s" % str(e))
 
 
     def __create_ssh_process(self):
         if self.args.path:
-            chall_path = str(Path(self.args.path) / self.chall)
+            chall_path = str(Path(self.args.path) / self.config.chall)
         else:
-            chall_path = self.chall
+            chall_path = self.config.chall
         try:
             if self.args.debug:
                 return gdb.debug(chall_path, ssh=self.ssh_conn)
@@ -60,39 +66,26 @@ class IOContext:
         status.success('done')
 
         status = log.progress('injecting exploit')
-        if not inject(self.kernel['archive'], "exploit"):
+        if not inject(self.config.archive, "exploit"):
             status.failure("failed")
 
         status.success('done')
-
-        cmd = [
-            "qemu-system-x86_64",
-            "-no-reboot", "-cpu", "max",
-            "-net", "none",
-            "-serial", "mon:stdio",
-            "-display", "none",
-            "-monitor", "none",
-            "-append", "console=ttyS0",
-            "-kernel", self.kernel["vmlinuz"],
-            "-initrd", self.kernel["archive"]
-        ]
-
         if self.args.debug:
             gdb_script = f'''
                 set architecture i386:x86-64
-                add-symbol-file {self.chall} 0xffffffffc0000000
+                add-symbol-file {self.config.binary} 0xffffffffc0000000
                 continue
             '''
-            gdb_script += self.args.gdb_command if self.args.gdb_command else ""
-            cmd.append('-s')
-            cmd.append('-S')
+            gdb_script += self.args.gdb_cmd if self.args.gdb_cmd else ""
+            self.config.chall.append('-s')
+            self.config.chall.append('-S')
 
-        p = process(cmd)
+        p = process(self.config.chall)
 
         if self.args.debug:
             gdb.attach(
                 target=('localhost', 1234),
-                exe=f'{self.kernel["vmlinuz"]}.elf',
+                exe=f'{self.config.kernel}.elf',
                 gdbscript=gdb_script
         )
 
@@ -101,16 +94,16 @@ class IOContext:
 
     def __create_local_process(self):
         try:
-            if self.kernel:
+            if self.config.archive:
                 return self.__create_kernel_process()
 
-            gdb_script = self.args.gdb_command if self.args.gdb_command else ""
+            gdb_script = self.args.gdb_cmd if self.args.gdb_cmd else ""
             if self.args.debug:
-                return gdb.debug([self.chall], gdbscript=gdb_script)
+                return gdb.debug([self.config.chall], gdbscript=gdb_script)
             elif self.args.strace:
-                return process(["strace", "-o", "strace.out", self.chall])
+                return process(["strace", "-o", "strace.out", self.config.chall])
             else:
-                p = process(self.chall)
+                p = process(self.config.chall)
                 if self.args.attach:
                     gdb.attach(p, gdbscript=gdb_script)
                     log.info("Attached gdb")
@@ -119,17 +112,20 @@ class IOContext:
         except Exception as e:
             log.error("Failed to create local process: %s" % str(e))
 
-    def connect(self):
+    def connect(self, log=True):
+        if not log:
+            context.log_level = "error"
+
         if not self.conn:
-            if self.args.local_bin and not self.args.remote:
-                self.args.remote = [NC, 'localhost', 5000]
+            if self.args.local and not self.args.remote:
+                self.args.remote = plain('localhost', 5000)
                 
-            if not self.args.remote or self.args.local_bin and not self.proc:
+            if not self.args.remote or self.args.local and not self.proc:
                 io = self.__create_local_process()
                 self.proc = io
 
             if self.args.remote:
-                if self.args.remote[0] == SSH:
+                if isinstance(self.args.remote, ssh):
                     if not self.ssh_conn:
                         self.ssh_conn = self.__create_remote_connection()
                         if not self.ssh_conn:
@@ -142,15 +138,21 @@ class IOContext:
                 log.error("Failed to create process")
 
             self.conn = io
+
+        context.log_level = "info"
         return self.conn
 
-    def reconnect(self):
+    def reconnect(self, log=True):
+        if self.conn:
+            self.close(log)
+        return self.connect(log)
+
+    def close(self, log=True):
+        if not log:
+            context.log_level = "error"
         self.conn.close()
         self.conn = None
-        return self.connect()
-
-    def close(self):
-        self.conn.close()
+        context.log_level = "info"
 
     def encode(self, data):
         if type(data) == int:
