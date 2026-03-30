@@ -12,8 +12,7 @@ import requests
 from pwn import log
 
 from pwninit.io import IOContext
-
-# --- thread-local proxy for io.ioctx ---
+from pwninit.helpers import PwnContext
 import pwninit.io as _io
 
 _farm_local = threading.local()
@@ -31,7 +30,6 @@ def _patched_set_ctx(new_ctx):
     _farm_local.ioctx = new_ctx
 
 _io.set_ctx = _patched_set_ctx
-# ---------------------------------------
 
 SERVER_TIMEOUT = 5
 POST_PERIOD = 5
@@ -62,12 +60,45 @@ class FlagStorage:
             self._flags = flags + self._flags
 
 
+class FlagIDStorage:
+    def __init__(self):
+        self._data = {}  # {chall: {team: [ids]}}
+        self._lock = threading.Lock()
+
+    def update(self, chall, data):
+        with self._lock:
+            self._data[chall] = data
+
+    def get(self, chall, team=None):
+        with self._lock:
+            if chall not in self._data:
+                return None
+            if team is None:
+                return self._data[chall]
+            return self._data[chall].get(str(team))
+
+
 def get_auth_headers(args):
     return {'Authorization': args.password}
 
+def set_farm_config(args, config):
+    url = urljoin(args.url, '/api/set_config')
+    r = requests.post(url, headers=get_auth_headers(args), json=config, timeout=SERVER_TIMEOUT)
+    if not r.ok:
+        raise Exception(r.text)
+    return r.json()
 
 def get_farm_config(args):
     url = urljoin(args.url, '/api/get_config')
+    r = requests.get(url, headers=get_auth_headers(args), timeout=SERVER_TIMEOUT)
+    if not r.ok:
+        raise Exception(r.text)
+    return r.json()
+
+
+def get_flagids(args, *keys):
+    path = '/'.join(str(k) for k in keys)
+    url = urljoin(args.url, f'/api/get_flagid/{path}')
     r = requests.get(url, headers=get_auth_headers(args), timeout=SERVER_TIMEOUT)
     if not r.ok:
         raise Exception(r.text)
@@ -117,7 +148,7 @@ def _post_loop(args, flag_storage, stop_event):
             flag_storage.unflushed(flags)
 
 
-def _run_one(exploit, ioctx, ctx, team_name, max_runtime, flag_format, flag_storage):
+def _run_one(exploit, ioctx, ctx, flag_ids, team_name, max_runtime, flag_format, flag_storage):
     try:
         ioctx.connect(log=False)
     except Exception as e:
@@ -127,7 +158,7 @@ def _run_one(exploit, ioctx, ctx, team_name, max_runtime, flag_format, flag_stor
     ioctx.conn.timeout = max_runtime
 
     try:
-        result = exploit(ctx, ioctx)
+        result = exploit(ctx, ioctx, flag_ids)
         flags = flag_format.findall(result) if isinstance(result, (str, bytes)) else []
         if not flags and result:
             flags = [result]
@@ -140,7 +171,7 @@ def _run_one(exploit, ioctx, ctx, team_name, max_runtime, flag_format, flag_stor
         log.warning('%s: exploit failed - %s' % (team_name, e))
 
 
-def _team_worker(team_name, ioctx, ctx, exploit, flag_format, flag_storage, task_queue, stop_event):
+def _team_worker(team_name, ioctx, ctx, exploit, config, args, flag_format, flag_storage, flagid_storage, task_queue, stop_event):
     """Persistent per-team thread. Binds its IOContext into the thread-local
     proxy once at startup, then waits for round tasks."""
     import pwninit.io as io
@@ -155,19 +186,27 @@ def _team_worker(team_name, ioctx, ctx, exploit, flag_format, flag_storage, task
         except queue.Empty:
             continue
 
+        flag_ids = flagid_storage.get(config.challname, team_name)
         try:
-            _run_one(exploit, ioctx, ctx, team_name, max_runtime, flag_format, flag_storage)
+            _run_one(exploit, ioctx, ctx, flag_ids, team_name, max_runtime, flag_format, flag_storage)
         finally:
             task_queue.task_done()
 
 
 def run_farm(args, config, exploit):
-    from pwninit.helpers import PwnContext
-
     log.info('Connecting to farm server at %s' % args.url)
+
+    if config.farm_config:
+        set_farm_config(args, config.farm_config)
 
     try:
         farm_config = get_farm_config(args)
+        log.info(f'Flag format: {farm_config["FLAG_FORMAT"]}')
+        log.info(f'Flag lifetime: {farm_config["FLAG_LIFETIME"]}')
+        if not args.period:
+            args.period = farm_config["FLAG_LIFETIME"]
+        else:
+            args.period = 55
     except Exception as e:
         log.error("Can't get farm_config from server: %s" % e)
         return 1
@@ -181,6 +220,7 @@ def run_farm(args, config, exploit):
     log.info('Got %d teams from server' % len(teams))
 
     flag_storage = FlagStorage()
+    flagid_storage = FlagIDStorage()
 
     team_ctxs = {}
     for team_name, team_addr in teams.items():
@@ -205,13 +245,21 @@ def run_farm(args, config, exploit):
         team_queues[team_name] = q
         t = threading.Thread(
             target=_team_worker,
-            args=(team_name, ioctx, ctx, exploit, flag_format, flag_storage, q, stop_event),
+            args=(team_name, ioctx, ctx, exploit, config, args, flag_format, flag_storage, flagid_storage, q, stop_event),
             daemon=True,
         )
         t.start()
 
     try:
         for attack_no in once_in_a_period(args.period):
+            try:
+                data = get_flagids(args, config.challname)
+                flagid_storage.update(config.challname, data)
+                log.info('Fetched flag IDs for %d teams' % len(data))
+            except Exception as e:
+                log.warning("Can't fetch flag IDs: %s" % e)
+                log.warning('No flag id for attack #%d' % attack_no)
+
             log.info('Launching attack #%d on %d teams' % (attack_no, len(team_ctxs)))
 
             post_stop = threading.Event()

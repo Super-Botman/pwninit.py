@@ -6,8 +6,8 @@ from types import SimpleNamespace
 config = None
 
 class Config(SimpleNamespace):
-    def __init__(self, binary=None, libc=None, chall=None, archive=None, kernel=None):
+    def __init__(self, binary=None, libc=None, chall=None, archive=None, kernel=None, **kwargs):
         global config
         if binary and not chall: chall=binary
-        super().__init__(binary=binary, libc=libc, chall=chall, archive=archive, kernel=kernel)
+        super().__init__(binary=binary, libc=libc, chall=chall, archive=archive, kernel=kernel, **kwargs)
         config = self

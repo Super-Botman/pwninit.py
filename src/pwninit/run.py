@@ -86,7 +86,7 @@ def parse_args():
         "-t",
         "--period",
         type=float,
-        default=55,
+        default=None,
         help="rerun exploit on all teams every N seconds",
     )
     farm.add_argument(

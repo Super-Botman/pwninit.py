@@ -71,14 +71,8 @@ class IOContext:
 
         status.success('done')
         if self.args.debug:
-            gdb_script = f'''
-                set architecture i386:x86-64
-                add-symbol-file {self.config.binary} 0xffffffffc0000000
-                continue
-            '''
-            gdb_script += self.args.gdb_cmd if self.args.gdb_cmd else ""
+            gdb_script = self.args.gdb_cmd if self.args.gdb_cmd else ""
             self.config.chall.append('-s')
-            self.config.chall.append('-S')
 
         p = process(self.config.chall)
 
@@ -114,6 +108,7 @@ class IOContext:
 
     def connect(self, log=True):
         if not log:
+            log_level = context.log_level
             context.log_level = "error"
 
         if not self.conn:
@@ -139,7 +134,9 @@ class IOContext:
 
             self.conn = io
 
-        context.log_level = "info"
+
+        if not log:
+            context.log_level = log_level
         return self.conn
 
     def reconnect(self, log=True):
@@ -149,10 +146,12 @@ class IOContext:
 
     def close(self, log=True):
         if not log:
+            log_level = context.log_level
             context.log_level = "error"
         self.conn.close()
         self.conn = None
-        context.log_level = "info"
+        if not log:
+            context.log_level = log_level
 
     def encode(self, data):
         if type(data) == int:
