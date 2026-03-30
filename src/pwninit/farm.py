@@ -196,7 +196,7 @@ def _team_worker(team_name, ioctx, ctx, exploit, config, args, flag_format, flag
 def run_farm(args, config, exploit):
     log.info('Connecting to farm server at %s' % args.url)
 
-    if config.farm_config:
+    if hasattr(config, 'farm_config'):
         set_farm_config(args, config.farm_config)
 
     try:

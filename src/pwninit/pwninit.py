@@ -2,11 +2,12 @@ import argparse
 import datetime
 import os
 import shutil
-import sys
 import subprocess
+import sys
+import re
 from pathlib import Path
 
-import magic as magic_lib
+import magic
 from mako.template import Template
 from pwn import ELF, context, libcdb, log
 
@@ -51,9 +52,11 @@ ELF_MIMES = {
 
 KERNEL_STRINGS = ["linux kernel", "bzimage", "zimage"]
 
+SHELL_MIMES = {"text/x-shellscript"}
+
 def is_archive(path: str) -> bool:
-    mime = magic_lib.from_file(path, mime=True)
-    desc = magic_lib.from_file(path).lower()
+    mime = magic.from_file(path, mime=True)
+    desc = magic.from_file(path).lower()
 
     if mime in ARCHIVE_MIMES:
         return True
@@ -65,8 +68,8 @@ def is_archive(path: str) -> bool:
         data = open(path, "rb").read()
         decompressed = decompress(data, mime)
         if decompressed != data:
-            inner_mime = magic_lib.from_buffer(decompressed, mime=True)
-            inner_desc = magic_lib.from_buffer(decompressed).lower()
+            inner_mime = magic.from_buffer(decompressed, mime=True)
+            inner_desc = magic.from_buffer(decompressed).lower()
             return inner_mime in ARCHIVE_MIMES or any(s in inner_desc for s in ARCHIVE_STRINGS)
     except Exception:
         pass
@@ -74,19 +77,26 @@ def is_archive(path: str) -> bool:
     return False
 
 def is_elf(path: str) -> bool:
-    return magic_lib.from_file(path, mime=True) in ELF_MIMES
+    return magic.from_file(path, mime=True) in ELF_MIMES
 
 def is_kernel(path: str) -> bool:
-    return any(s in magic_lib.from_file(path).lower() for s in KERNEL_STRINGS)
+    return any(s in magic.from_file(path).lower() for s in KERNEL_STRINGS)
 
-def find_bins(dir: Path) -> dict:
+def is_shell(path: str) -> bool:
+    mime = magic.from_file(path, mime=True)
+    if mime not in SHELL_MIMES:
+        return False
+    desc = magic.from_file(path).lower()
+    return not any(s in desc for s in ("bash", "zsh", "fish", "csh"))
+
+def ls(dir: Path) -> dict:
     files = [
         Path(dir) / f
         for f in os.listdir(dir)
         if os.path.isfile(os.path.join(dir, f))
     ]
 
-    result = {"elf": [], "kernel": [], "archive": []}
+    result = {"elf": [], "kernel": [], "archive": [], "shell": []}
 
     for file in files:
         path = str(file)
@@ -107,6 +117,9 @@ def find_bins(dir: Path) -> dict:
 
         elif is_archive(path):
             result["archive"].append(path)
+
+        elif is_shell(path):
+            result["shell"].append(path)
 
     return result
 
@@ -142,22 +155,22 @@ def sort_bins(files: dict) -> dict:
 
 
 def process_binaries(path: Path) -> dict | None:
-    bins = find_bins(path)
+    files = ls(path)
 
-    for key, val in bins.items():
+    for key, val in files.items():
         if val:
             log.success("%s found: %s" % (key, ", ".join(val)))
 
 
-    if not bins["elf"] and not bins['kernel']:
+    if not files["elf"] and not files['kernel']:
         return None
     else:
-        bins["elf"] = sort_bins(bins)
-        for key, val in bins["elf"].items():
+        files["elf"] = sort_bins(files)
+        for key, val in files["elf"].items():
             if val:
                 log.success("%s: %s" % (key, ", ".join(val)))
 
-    return bins
+    return files
 
 
 def fetch_ld(bins: dict, path: Path) -> bool:
@@ -186,12 +199,58 @@ def open_file(path: Path):
             return None
     return open(path, "w")
 
-def relpath(bins, type):
-    return "./" + os.path.basename(bins[type][0]) if bins.get(type) else None
+def relpath(files, type):
+    return "./" + os.path.basename(files[type][0]) if files.get(type) else None
+
+def patch_run(path: str) -> int:
+    with open(path, "r") as f:
+        lines = f.readlines()
+
+    start = None
+    for i, line in enumerate(lines):
+        if re.match(r"^\s*qemu-system-\S+", line):
+            start = i
+            break
+
+    if start is None:
+        return 0
+
+    end = start
+    for i in range(start, len(lines)):
+        end = i
+        if not lines[i].rstrip().endswith("\\"):
+            break
+
+    cmd_lines = [l.rstrip("\n") for l in lines[start:end + 1]]
+
+    if any('"$@"' in l for l in cmd_lines):
+        return 1
+
+    indent = "    "
+    for l in cmd_lines[1:]:
+        m = re.match(r"^(\s+)", l)
+        if m:
+            indent = m.group(1)
+            break
+
+    last = cmd_lines[-1].rstrip()
+    if not last.endswith("\\"):
+        last += " \\"
+    cmd_lines[-1] = last
+
+    cmd_lines.append(f'{indent}"$@"')
+
+    result = lines[:start] + [l + "\n" for l in cmd_lines] + lines[end + 1:]
+
+    with open(path, "w") as f:
+        f.writelines(result)
+
+    return 2
 
 def gen_files(path: Path, bins: dict) -> dict:
     templates = Path(os.path.dirname(os.path.realpath(__file__))) / "templates"
     chall = os.path.basename(path)
+    files = {}
 
     checksecs = []
     for group in bins.values():
@@ -202,19 +261,32 @@ def gen_files(path: Path, bins: dict) -> dict:
                 pass
     checksecs_str = "\n\n".join(checksecs)
 
-    files = {}
+    archive = relpath(bins, "archive")
+    kernel = relpath(bins, "kernel")
+    qemu = None
+    if archive or kernel:
+        QEMU_DEFAULT.append('-kernel')
+        QEMU_DEFAULT.append(relpath(files, "kernel"))
+        QEMU_DEFAULT.append('-initrd')
+        QEMU_DEFAULT.append(relpath(files, "archive"))
+        qemu = QEMU_DEFAULT
 
-    QEMU_DEFAULT.append('-kernel')
-    QEMU_DEFAULT.append(relpath(bins, "kernel"))
-    QEMU_DEFAULT.append('-initrd')
-    QEMU_DEFAULT.append(relpath(bins, "archive"))
+        for f in bins["shell"]:
+            ret = patch_run(f)
+            if ret==1:
+                log.info(f'already patched {f}')
+                qemu = [f]
+
+            if ret==2:
+                log.success(f'patched {f}')
+                qemu = [f]
 
     files["exploit.py"] = Template(filename=str(templates / "exploit.py")).render(
         binary=relpath(bins["elf"], "challs"),
         libc=relpath(bins["elf"], "libc"),
-        archive=relpath(bins,"archive"),
-        kernel=relpath(bins,"kernel"),
-        qemu=QEMU_DEFAULT if relpath(bins, "archive") else None
+        archive=archive,
+        kernel=kernel,
+        qemu=qemu
     )
 
     files["notes.md"] = Template(filename=str(templates / "notes.md")).render(
@@ -224,9 +296,13 @@ def gen_files(path: Path, bins: dict) -> dict:
         author=config.get("author", "pwner", "PWNINIT_AUTHOR"),
     )
 
-    if bins.get("kernel") and relpath(bins['elf'], 'challs'):
+    if bins.get("kernel"):
+        kernel_module = relpath(bins['elf'], 'challs')
+        if kernel_module:
+            kernel_module = kernel_module.split('.ko')[0][2:]
+
         files["exploit.c"] = Template(filename=str(templates / "exploit.c")).render(
-            kernel_module = relpath(bins['elf'], 'challs').split('.ko')[0][2:]
+            kernel_module = kernel_module
         )
         files["Makefile"] = Template(filename=str(templates / "Makefile")).render()
 
