@@ -152,4 +152,3 @@ You can also use environment variables:
 
 - Handle jails (fuck jails)
 - CTFd provider
-- Add option to run and debug in docker

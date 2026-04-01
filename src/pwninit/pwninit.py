@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 
 import magic
+import docker
 from mako.template import Template
 from pwn import ELF, context, libcdb, log
 
@@ -410,6 +411,22 @@ def cli() -> int:
     if not sorted_bins:
         log.info("No binaries found")
         return 1
+    
+    client = docker.from_env()
+    name = path.resolve().name
+    image_tag = f"pwninit-{name}:latest"
+    try:
+        image, build_logs = client.images.build(
+            path=str(path), tag=image_tag, rm=True, forcerm=True
+        )
+        for _ in build_logs:
+            pass
+        log.success('Built docker image')
+    except docker.errors.APIError:
+        pass
+    except Exception as e:
+        log.warning(f"Build failed: {str(e)}")
+        raise
 
     is_kernel = bool(sorted_bins.get("kernel"))
 

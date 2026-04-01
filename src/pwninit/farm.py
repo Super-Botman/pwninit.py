@@ -43,11 +43,11 @@ class FlagStorage:
         self._seen = set()
         self._lock = threading.Lock()
 
-    def add(self, flag, team_name):
+    def add(self, flag, team_name, service):
         with self._lock:
             if flag not in self._seen:
                 self._seen.add(flag)
-                self._flags.append({'flag': flag, 'team': team_name})
+                self._flags.append({'flag': flag, 'team': team_name, 'service': service})
 
     def flush(self):
         with self._lock:
@@ -62,7 +62,7 @@ class FlagStorage:
 
 class FlagIDStorage:
     def __init__(self):
-        self._data = {}  # {chall: {team: [ids]}}
+        self._data = {}
         self._lock = threading.Lock()
 
     def update(self, chall, data):
@@ -107,7 +107,7 @@ def get_flagids(args, *keys):
 
 def post_flags(args, flags):
     sploit_name = Path('exploit.py').resolve().parent.name
-    data = [{'flag': item['flag'], 'sploit': sploit_name, 'team': item['team']}
+    data = [{'flag': item['flag'], 'sploit': sploit_name, 'team': item['team'], 'service': item['service']}
             for item in flags]
     url = urljoin(args.url, '/api/post_flags')
     r = requests.post(url, headers=get_auth_headers(args), json=data, timeout=SERVER_TIMEOUT)
@@ -148,7 +148,7 @@ def _post_loop(args, flag_storage, stop_event):
             flag_storage.unflushed(flags)
 
 
-def _run_one(exploit, ioctx, ctx, flag_ids, team_name, max_runtime, flag_format, flag_storage):
+def _run_one(exploit, ioctx, ctx, flag_ids, team_name, max_runtime, flag_format, flag_storage, chall):
     try:
         ioctx.connect(log=False)
     except Exception as e:
@@ -164,7 +164,7 @@ def _run_one(exploit, ioctx, ctx, flag_ids, team_name, max_runtime, flag_format,
             flags = [result]
         for flag in flags:
             log.success('%s: got flag %s' % (team_name, flag))
-            flag_storage.add(flag, team_name)
+            flag_storage.add(flag, team_name, chall)
 
         ioctx.close(log=False)
     except Exception as e:
@@ -188,7 +188,7 @@ def _team_worker(team_name, ioctx, ctx, exploit, config, args, flag_format, flag
 
         flag_ids = flagid_storage.get(config.challname, team_name)
         try:
-            _run_one(exploit, ioctx, ctx, flag_ids, team_name, max_runtime, flag_format, flag_storage)
+            _run_one(exploit, ioctx, ctx, flag_ids, team_name, max_runtime, flag_format, flag_storage, config.challname)
         finally:
             task_queue.task_done()
 

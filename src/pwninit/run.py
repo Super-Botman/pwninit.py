@@ -54,6 +54,7 @@ def parse_args():
 
     # --- Debug ---
     debug = parser.add_argument_group("debug")
+    debug.add_argument("-D", "--docker", action="store_true", help="enable debug mode")
     debug.add_argument("-d", "--debug", action="store_true", help="enable debug mode")
     debug.add_argument("-a", "--attach", action="store_true", help="attach gdb")
     debug.add_argument(

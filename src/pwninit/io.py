@@ -2,6 +2,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+import docker
 from pwn import ELF, context, gdb, log, pause, process, remote, ssh
 
 from pwninit.kernel import inject
@@ -106,18 +107,74 @@ class IOContext:
         except Exception as e:
             log.error("Failed to create local process: %s" % str(e))
 
+    def __launch_docker(self):
+        client = docker.from_env()
+
+        path = Path('.')
+        name = path.resolve().name
+        image_tag = self.config.docker_image if hasattr(self.config, 'docker_image') else f"pwninit-{name}:latest"
+
+        containers = client.containers.list()
+        container = None
+        for c in containers:
+            if c.image.tags[-1] == image_tag:
+                container = c
+                
+        if not container:
+            try:
+                container = client.containers.run(
+                    image_tag,
+                    pid_mode="host",
+                    ports={f'{self.args.remote.port}/tcp': self.args.remote.port},
+                    privileged=True,
+                    detach=True
+                )
+            except docker.errors.APIError as e:
+                log.warning(f'Failed to launch docker: {e}')
+
+        return container
+
+    def __debug_docker(self, container):
+        processes = container.top()
+
+        if hasattr(self.config, "docker_bin"):
+            bin = self.config.docker_bin
+        else:
+            bin = None
+            for p in processes['Processes']:
+                if 'socat' in p[-1]:
+                    bin = p[-1].split('exec:')[1].split(',')[0]
+
+            if not bin:
+                log.warning("No socat running, set directly the docker_bin in Config")
+                exit(1)
+
+        pid = None
+        for p in processes['Processes']:
+            if bin == p[-1]:
+                pid = int(p[1])
+
+        if not pid:
+            log.warning("Bin isn't running, check that Dockerfile is working or bin is correct")
+            exit(1)
+
+        gdb.attach(pid, exe=self.config.binary)
+
     def connect(self, log=True):
         if not log:
             log_level = context.log_level
             context.log_level = "error"
 
         if not self.conn:
-            if self.args.local and not self.args.remote:
+            if (self.args.local or self.args.docker) and not self.args.remote:
                 self.args.remote = plain('localhost', 5000)
                 
             if not self.args.remote or self.args.local and not self.proc:
                 io = self.__create_local_process()
                 self.proc = io
+
+            if self.args.docker:
+                container = self.__launch_docker()
 
             if self.args.remote:
                 if isinstance(self.args.remote, ssh):
@@ -128,15 +185,18 @@ class IOContext:
                     io = self.__create_ssh_process()
                 else:
                     io = self.__create_remote_connection()
+            
+            if self.args.docker and (self.args.debug or self.args.attach):
+                self.__debug_docker(container)
 
             if not io:
                 log.error("Failed to create process")
 
             self.conn = io
 
-
         if not log:
             context.log_level = log_level
+
         return self.conn
 
     def reconnect(self, log=True):
