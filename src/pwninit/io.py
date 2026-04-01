@@ -1,9 +1,10 @@
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import docker
-from pwn import ELF, context, gdb, log, pause, process, remote, ssh
+from pwn import context, gdb, log, pause, process, remote, ssh
 
 from pwninit.kernel import inject
 
@@ -131,28 +132,37 @@ class IOContext:
                 )
             except docker.errors.APIError as e:
                 log.warning(f'Failed to launch docker: {e}')
+                exit(1)
 
         return container
 
     def __debug_docker(self, container):
         processes = container.top()
 
+        pid = None
+        bin = None
+
         if hasattr(self.config, "docker_bin"):
             bin = self.config.docker_bin
         else:
-            bin = None
             for p in processes['Processes']:
+                if self.config.binary in p[-1]:
+                    pid = int(p[1])
+                    break
+
                 if 'socat' in p[-1]:
                     bin = p[-1].split('exec:')[1].split(',')[0]
+                    break
 
-            if not bin:
-                log.warning("No socat running, set directly the docker_bin in Config")
+            if not bin and not pid:
+                log.warning("No socat running nor binary, set directly the docker_bin in Config")
                 exit(1)
 
-        pid = None
-        for p in processes['Processes']:
-            if bin == p[-1]:
-                pid = int(p[1])
+        print(pid)
+        if not pid:
+            for p in processes['Processes']:
+                if bin in p[-1]:
+                    pid = int(p[1])
 
         if not pid:
             log.warning("Bin isn't running, check that Dockerfile is working or bin is correct")
@@ -187,10 +197,18 @@ class IOContext:
                     io = self.__create_remote_connection()
             
             if self.args.docker and (self.args.debug or self.args.attach):
+                try:
+                    buf = io.recv(timeout=2)
+                    io.unrecv(buf)
+                except:
+                    log.warning("Failed to connect to docker")
+                    exit(1)
+
                 self.__debug_docker(container)
 
             if not io:
-                log.error("Failed to create process")
+                log.warning("Failed to create process")
+                exit(1)
 
             self.conn = io
 
