@@ -8,17 +8,16 @@ from pwn import context, gdb, log, pause, process, remote, ssh
 
 from pwninit.kernel import inject
 
-
 @dataclass
-class plain:
+class NC:
     host: str
     port: int
 
 @dataclass
-class ssh:
+class SSH:
     user: str
-    password: str
     host: str
+    password: str = ''
     port: int = 22
 
 class IOContext:
@@ -31,13 +30,13 @@ class IOContext:
         self.proc = proc
     
     def __create_remote_connection(self):
-        if isinstance(self.args.remote, plain):
+        if isinstance(self.args.remote, NC):
             try:
                 return remote(self.args.remote.host, self.args.remote.port, ssl=self.args.ssl)
             except Exception as e:
                 log.error("Failed to connect to %s:%d - %s" % (self.args.remote.host, self.args.remote.port, str(e)))
 
-        elif isinstance(self.args.remote, ssh):
+        elif isinstance(self.args.remote, SSH):
             try:
                 return ssh(user=self.args.remote.user, password=self.args.remote.password, host=self.args.remote.host, port=self.args.remote.port)
             except Exception as e:
@@ -114,6 +113,7 @@ class IOContext:
         path = Path('.')
         name = path.resolve().name
         image_tag = self.config.docker_image if hasattr(self.config, 'docker_image') else f"pwninit-{name}:latest"
+        image_tag = image_tag.lower()
 
         containers = client.containers.list()
         container = None
@@ -170,14 +170,14 @@ class IOContext:
 
         gdb.attach(pid, exe=self.config.binary)
 
-    def connect(self, log=True):
-        if not log:
+    def connect(self, enable_log=True):
+        if not enable_log:
             log_level = context.log_level
             context.log_level = "error"
 
         if not self.conn:
             if (self.args.local or self.args.docker) and not self.args.remote:
-                self.args.remote = plain('localhost', 5000)
+                self.args.remote = NC('localhost', 5000)
                 
             if not self.args.remote or self.args.local and not self.proc:
                 io = self.__create_local_process()
@@ -187,7 +187,7 @@ class IOContext:
                 container = self.__launch_docker()
 
             if self.args.remote:
-                if isinstance(self.args.remote, ssh):
+                if isinstance(self.args.remote, SSH):
                     if not self.ssh_conn:
                         self.ssh_conn = self.__create_remote_connection()
                         if not self.ssh_conn:
@@ -212,23 +212,23 @@ class IOContext:
 
             self.conn = io
 
-        if not log:
+        if not enable_log:
             context.log_level = log_level
 
         return self.conn
 
-    def reconnect(self, log=True):
+    def reconnect(self, enable_log=True):
         if self.conn:
-            self.close(log)
-        return self.connect(log)
+            self.close(enable_log)
+        return self.connect(enable_log)
 
-    def close(self, log=True):
-        if not log:
+    def close(self, enable_log=True):
+        if not enable_log:
             log_level = context.log_level
             context.log_level = "error"
         self.conn.close()
         self.conn = None
-        if not log:
+        if not enable_log:
             context.log_level = log_level
 
     def encode(self, data):

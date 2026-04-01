@@ -12,12 +12,12 @@ from pwninit.farm import run_farm
 def addr_type(value):
     if "@" in value:
         creds, addr = value.split("@", 1)
-        user, password = creds.split(":", 1) if ":" in creds else (creds, None)
+        user, password = creds.split(":", 1) if ":" in creds else (creds, '')
         host, port = addr.split(":", 1) if ":" in addr else (addr, 22)
-        return io.ssh(user, password, host, int(port))
+        return io.SSH(user, host, password, int(port))
     elif ":" in value:
         host, port = value.split(":", 1)
-        return io.plain(host or "localhost", int(port))
+        return io.NC(host or "localhost", int(port))
     else:
         raise argparse.ArgumentTypeError(
             "Invalid format. Expected 'ip:port', 'user@ip', or 'user:pass@ip:port'."
