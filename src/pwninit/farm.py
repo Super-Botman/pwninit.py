@@ -150,7 +150,7 @@ def _post_loop(args, flag_storage, stop_event):
 
 def _run_one(exploit, ioctx, ctx, flag_ids, team_name, max_runtime, flag_format, flag_storage, chall):
     try:
-        ioctx.connect(log=False)
+        ioctx.connect(enable_log=False)
     except Exception as e:
         log.warning('%s: connection failed - %s' % (team_name, e))
         return
@@ -165,10 +165,10 @@ def _run_one(exploit, ioctx, ctx, flag_ids, team_name, max_runtime, flag_format,
         for flag in flags:
             log.success('%s: got flag %s' % (team_name, flag))
             flag_storage.add(flag, team_name, chall)
-
-        ioctx.close(log=False)
     except Exception as e:
         log.warning('%s: exploit failed - %s' % (team_name, e))
+    finally:
+        ioctx.close(enable_log=False)
 
 
 def _team_worker(team_name, ioctx, ctx, exploit, config, args, flag_format, flag_storage, flagid_storage, task_queue, stop_event):
@@ -225,11 +225,18 @@ def run_farm(args, config, exploit):
     team_ctxs = {}
     for team_name, team_addr in teams.items():
         try:
+            host = team_addr
+            if ':' in host:
+                host = team_addr.split(':')[0]
+                port = int(team_addr.split(':')[1])
+
             team_args = copy.copy(args)
-            team_args.remote.host = team_addr
+            team_args.remote.host = host
+            if port:
+                team_args.remote.port = port
             ioctx = IOContext(team_args, config)
             ctx = PwnContext(ioctx.proc, config.binary, config.libc)
-            team_ctxs[team_name] = (ioctx, ctx)
+            team_ctxs[team_name] = (copy.deepcopy(ioctx), copy.deepcopy(ctx))
         except Exception as e:
             log.warning('%s: failed to init - %s' % (team_name, e))
 

@@ -52,7 +52,7 @@ class IOContext:
             if self.args.debug:
                 return gdb.debug(chall_path, ssh=self.ssh_conn)
             else:
-                return self.ssh_conn.process(chall_path)
+                return self.ssh_conn.process(chall_path, env=self.config.env)
         except Exception as e:
             log.error("Failed to create SSH process: %s" % str(e))
 
@@ -75,7 +75,7 @@ class IOContext:
             gdb_script = self.args.gdb_cmd if self.args.gdb_cmd else ""
             self.config.chall.append('-s')
 
-        p = process(self.config.chall)
+        p = process(self.config.chall, env=self.config.env)
 
         if self.args.debug:
             gdb.attach(
@@ -94,11 +94,11 @@ class IOContext:
 
             gdb_script = self.args.gdb_cmd if self.args.gdb_cmd else ""
             if self.args.debug:
-                return gdb.debug([self.config.chall], gdbscript=gdb_script)
+                return gdb.debug(self.config.chall, gdbscript=gdb_script, env=self.config.env)
             elif self.args.strace:
-                return process(["strace", "-o", "strace.out", self.config.chall])
+                return process(["strace", "-o", "strace.out", self.config.chall], env=self.config.env)
             else:
-                p = process(self.config.chall)
+                p = process(self.config.chall, env=self.config.env)
                 if self.args.attach:
                     gdb.attach(p, gdbscript=gdb_script)
                     log.info("Attached gdb")
@@ -194,6 +194,8 @@ class IOContext:
                             return 1
                     io = self.__create_ssh_process()
                 else:
+                    if self.args.local:
+                        time.sleep(0.2)
                     io = self.__create_remote_connection()
             
             if self.args.docker and (self.args.debug or self.args.attach):

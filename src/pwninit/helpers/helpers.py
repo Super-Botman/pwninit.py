@@ -161,9 +161,9 @@ class PwnContext:
                     name = "libc"
                     base = self.proc.libc_mapping().address
                 else:
-                    name = m.path[1:-1]
-                    base = getattr(self.proc, f'{name}_mapping')().address
-
+                    if hasattr(self.proc, f'{name}_mapping'):
+                        name = m.path[1:-1]
+                        base = getattr(self.proc, f'{name}_mapping')().address
                 return name, base
 
         return name, base

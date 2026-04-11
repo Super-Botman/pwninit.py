@@ -8,7 +8,6 @@ import re
 from pathlib import Path
 
 import magic
-import docker
 from mako.template import Template
 from pwn import ELF, context, libcdb, log
 
@@ -408,32 +407,31 @@ def cli() -> int:
             path = ret
 
     sorted_bins = process_binaries(path)
-    if not sorted_bins:
+    if sorted_bins:
+        if (path / 'Dockerfile').exists():
+            name = path.resolve().name
+            image_tag = f"pwninit-{name}:latest".lower()
+            try:
+                subprocess.run(
+                    ["docker", "build", "--load", "-t", image_tag, "."],
+                    cwd=str(path),
+                    check=True,
+                    capture_output=True,
+                    env={**os.environ, "DOCKER_BUILDKIT": "1"},
+                )
+                log.success('Built docker image')
+            except subprocess.CalledProcessError as e:
+                log.warning(f"Build failed: {e.stderr.decode()}")
+                raise
+
+        is_kernel = bool(sorted_bins.get("kernel"))
+
+        if not is_kernel:
+            if not setup_libc_ld(sorted_bins, path):
+                return 1
+    else:
         log.info("No binaries found")
-        return 1
-    
-    if (path / 'Dockerfile').exists():
-        client = docker.from_env()
-        name = path.resolve().name
-        image_tag = f"pwninit-{name}:latest".lower()
-        try:
-            image, build_logs = client.images.build(
-                path=str(path), tag=image_tag, rm=True, forcerm=True
-            )
-            for _ in build_logs:
-                pass
-            log.success('Built docker image')
-        except docker.errors.APIError:
-            pass
-        except Exception as e:
-            log.warning(f"Build failed: {str(e)}")
-            raise
-
-    is_kernel = bool(sorted_bins.get("kernel"))
-
-    if not is_kernel:
-        if not setup_libc_ld(sorted_bins, path):
-            return 1
+        sorted_bins = {"elf": {}, "kernel": [], "archive": [], "shell": []}
 
     files = gen_files(path, sorted_bins)
 
