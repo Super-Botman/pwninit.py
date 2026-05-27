@@ -165,12 +165,7 @@ def cli():
         helpers.set_ctx(ctx)
 
     try:
-        flag = exploit(helpers.pwnctx, io.ioctx)
-        if flag:
-            log.success("flag: %s" % flag)
-            save_flag(flag)
-        else:
-            log.warning("No flag returned from exploit")
+        exploit(helpers.pwnctx, io.ioctx)
     except Exception as e:
         log.error("Exploit failed: %s" % str(e))
 

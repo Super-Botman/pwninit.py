@@ -6,6 +6,10 @@ from pathlib import Path
 import docker
 from pwn import context, gdb, log, pause, process, remote, ssh
 
+from pwnlib.tubes.tube import tube
+from pwnlib.log import Logger
+from pwnlib.timeout import Timeout
+
 from pwninit.kernel import inject
 
 @dataclass
@@ -20,8 +24,9 @@ class SSH:
     password: str = ''
     port: int = 22
 
-class IOContext:
+class IOContext(tube):
     def __init__(self, args, config, prefix=None, proc=None, conn=None, ssh_conn=None):
+        super().__init__()
         self.args = args
         self.config = config
         self.prefix = prefix
@@ -158,7 +163,6 @@ class IOContext:
                 log.warning("No socat running nor binary, set directly the docker_bin in Config")
                 exit(1)
 
-        print(pid)
         if not pid:
             for p in processes['Processes']:
                 if bin in p[-1]:
@@ -217,7 +221,7 @@ class IOContext:
         if not enable_log:
             context.log_level = log_level
 
-        return self.conn
+        return self
 
     def reconnect(self, enable_log=True):
         if self.conn:
@@ -308,7 +312,14 @@ class IOContext:
         return lines
 
     def ra(self):
-        return self.conn.recvall()
+        return self.recvall()
+
+    def itrv(self):
+        return self.interactive()
+
+    def urecv(self):
+        return self.unrecv()
+
 
 ioctx = None
 
@@ -329,10 +340,11 @@ def connect(host=None, port=None, default=False):
     if port is not None:
         ioctx.args.remote[2] = port
 
-    io = IOContext(ioctx.args, ioctx.chall, ioctx.prefix, ioctx.conn)
+    io = IOContext(ioctx.args, ioctx.config, ioctx.prefix, conn=ioctx.conn)
     if default:
         ioctx = io
     return io.connect()
+
 
 reconnect = lambda *a, **k: (_require_ctx(), ioctx.reconnect(*a, **k))[1]
 close = lambda *a, **k: (_require_ctx(), ioctx.close(*a, **k))[1]
