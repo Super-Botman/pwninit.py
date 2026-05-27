@@ -253,11 +253,11 @@ def gen_files(path: Path, bins: dict) -> dict:
     files = {}
 
     checksecs = []
-    for group in bins.values():
+    for group in bins['elf'].values():
         for f in (group or []):
             try:
                 checksecs.append(f"[*] {f}\n" + ELF(f, checksec=False).checksec(color=False))
-            except Exception:
+            except Exception as e:
                 pass
     checksecs_str = "\n\n".join(checksecs)
 

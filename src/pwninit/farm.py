@@ -13,23 +13,6 @@ from pwn import log
 
 from pwninit.io import IOContext
 from pwninit.helpers import PwnContext
-import pwninit.io as _io
-
-_farm_local = threading.local()
-
-class _ThreadLocalIOProxy:
-    """Forwards all attribute access to the calling thread's IOContext."""
-    def __getattr__(self, name):
-        return getattr(_farm_local.ioctx, name)
-    def __setattr__(self, name, value):
-        setattr(_farm_local.ioctx, name, value)
-
-_io.ioctx = _ThreadLocalIOProxy()
-
-def _patched_set_ctx(new_ctx):
-    _farm_local.ioctx = new_ctx
-
-_io.set_ctx = _patched_set_ctx
 
 SERVER_TIMEOUT = 5
 POST_PERIOD = 5

@@ -6,16 +6,14 @@ from pathlib import Path
 import docker
 from pwn import context, gdb, log, pause, process, remote, ssh
 
-from pwnlib.tubes.tube import tube
-from pwnlib.log import Logger
-from pwnlib.timeout import Timeout
-
 from pwninit.kernel import inject
+
 
 @dataclass
 class NC:
     host: str
     port: int
+
 
 @dataclass
 class SSH:
@@ -24,16 +22,20 @@ class SSH:
     password: str = ''
     port: int = 22
 
-class IOContext(tube):
-    def __init__(self, args, config, prefix=None, proc=None, conn=None, ssh_conn=None):
-        super().__init__()
+
+class IOContext():
+    def __init__(self, args, config, proc=None, conn=None, ssh_conn=None):
         self.args = args
         self.config = config
-        self.prefix = prefix
         self.ssh_conn = ssh_conn
         self.conn = conn
         self.proc = proc
-    
+
+    def __getattr__(self, name):
+        if name != 'conn' and self.conn is not None:
+            return getattr(self.conn, name)
+        raise AttributeError(name)
+
     def __create_remote_connection(self):
         if isinstance(self.args.remote, NC):
             try:
@@ -43,10 +45,10 @@ class IOContext(tube):
 
         elif isinstance(self.args.remote, SSH):
             try:
-                return ssh(user=self.args.remote.user, password=self.args.remote.password, host=self.args.remote.host, port=self.args.remote.port)
+                return ssh(user=self.args.remote.user, password=self.args.remote.password,
+                           host=self.args.remote.host, port=self.args.remote.port)
             except Exception as e:
                 log.error("SSH connection failed: %s" % str(e))
-
 
     def __create_ssh_process(self):
         if self.args.path:
@@ -61,21 +63,17 @@ class IOContext(tube):
         except Exception as e:
             log.error("Failed to create SSH process: %s" % str(e))
 
-
     def __create_kernel_process(self):
         status = log.progress('compiling exploit')
-        subprocess.run(
-            ["make"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        subprocess.run(["make"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         status.success('done')
 
         status = log.progress('injecting exploit')
         if not inject(self.config.archive, "exploit"):
             status.failure("failed")
-
         status.success('done')
+
+        gdb_script = ""
         if self.args.debug:
             gdb_script = self.args.gdb_cmd if self.args.gdb_cmd else ""
             self.config.chall.append('-s')
@@ -83,14 +81,9 @@ class IOContext(tube):
         p = process(self.config.chall, env=self.config.env)
 
         if self.args.debug:
-            gdb.attach(
-                target=('localhost', 1234),
-                exe=f'{self.config.kernel}.elf',
-                gdbscript=gdb_script
-        )
+            gdb.attach(target=('localhost', 1234), exe=f'{self.config.kernel}.elf', gdbscript=gdb_script)
 
         return p
-        
 
     def __create_local_process(self):
         try:
@@ -114,18 +107,14 @@ class IOContext(tube):
 
     def __launch_docker(self):
         client = docker.from_env()
+        name = Path('.').resolve().name
+        image_tag = getattr(self.config, 'docker_image', f"pwninit-{name}:latest").lower()
 
-        path = Path('.')
-        name = path.resolve().name
-        image_tag = self.config.docker_image if hasattr(self.config, 'docker_image') else f"pwninit-{name}:latest"
-        image_tag = image_tag.lower()
+        container = next(
+            (c for c in client.containers.list() if c.image.tags[-1] == image_tag),
+            None
+        )
 
-        containers = client.containers.list()
-        container = None
-        for c in containers:
-            if c.image.tags[-1] == image_tag:
-                container = c
-                
         if not container:
             try:
                 container = client.containers.run(
@@ -133,7 +122,7 @@ class IOContext(tube):
                     pid_mode="host",
                     ports={f'{self.args.remote.port}/tcp': self.args.remote.port},
                     privileged=True,
-                    detach=True
+                    detach=True,
                 )
             except docker.errors.APIError as e:
                 log.warning(f'Failed to launch docker: {e}')
@@ -143,7 +132,6 @@ class IOContext(tube):
 
     def __debug_docker(self, container):
         processes = container.top()
-
         pid = None
         bin = None
 
@@ -154,13 +142,12 @@ class IOContext(tube):
                 if self.config.binary in p[-1]:
                     pid = int(p[1])
                     break
-
                 if 'socat' in p[-1]:
                     bin = p[-1].split('exec:')[1].split(',')[0]
                     break
 
             if not bin and not pid:
-                log.warning("No socat running nor binary, set directly the docker_bin in Config")
+                log.warning("No socat running nor binary — set docker_bin in Config")
                 exit(1)
 
         if not pid:
@@ -169,7 +156,7 @@ class IOContext(tube):
                     pid = int(p[1])
 
         if not pid:
-            log.warning("Bin isn't running, check that Dockerfile is working or bin is correct")
+            log.warning("Bin isn't running — check Dockerfile or bin name")
             exit(1)
 
         gdb.attach(pid, exe=self.config.binary)
@@ -184,8 +171,7 @@ class IOContext(tube):
                 self.args.remote = NC('localhost', 5000)
                 
             if not self.args.remote or self.args.local and not self.proc:
-                io = self.__create_local_process()
-                self.proc = io
+                self.proc = io = self.__create_local_process()
 
             if self.args.docker:
                 container = self.__launch_docker()
@@ -229,6 +215,8 @@ class IOContext(tube):
         return self.connect(enable_log)
 
     def close(self, enable_log=True):
+        if not self.conn:
+            return
         if not enable_log:
             log_level = context.log_level
             context.log_level = "error"
@@ -238,17 +226,16 @@ class IOContext(tube):
             context.log_level = log_level
 
     def encode(self, data):
-        if type(data) == int:
+        if isinstance(data, int):
             data = str(data).encode()
-        elif type(data) == str:
+        elif isinstance(data, str):
             data = data.encode()
         return data
-    
+
     def prompt(self, data, **kwargs):
         data = self.encode(data)
-
         r = kwargs.pop("io", self.conn)
-        prefix = self.encode(kwargs.pop("prefix", self.prefix))
+        prefix = self.encode(kwargs.pop("prefix", self.config.prefix))
         line = self.encode(kwargs.pop("line", True))
         if prefix is not None:
             if line:
@@ -266,7 +253,7 @@ class IOContext(tube):
             self.prompt(args[0], **kwargs)
         elif len(args) >= 2:
             self.prompt(args[1], prefix=args[0], **kwargs)
-        
+
     def sa(self, *args, **kwargs):
         self.sla(*args, line=False, **kwargs)
 
@@ -280,10 +267,7 @@ class IOContext(tube):
         r = kwargs.pop("io", self.conn)
         line = kwargs.pop("line", False)
         if prefix is None:
-            if line:
-                return r.recvline(**kwargs)
-            else:
-                return r.recv(**kwargs)
+            return r.recvline(**kwargs) if line else r.recv(**kwargs)
         elif isinstance(prefix, int):
             return r.recvn(prefix, **kwargs)
         else:
@@ -296,73 +280,63 @@ class IOContext(tube):
             else:
                 return r.recvuntil(prefix, drop=drop, **kwargs)
 
-    def ru(self, u, **kwargs):
-        return self.recv(u, **kwargs)
-
-    def rl(self, **kwargs):
-        return self.recv(line=True, **kwargs)
-
-    def rla(self, d, **kwargs):
-        return self.recv(d, line=True, **kwargs)
+    def ru(self, u, **kwargs):   return self.recv(u, **kwargs)
+    def rl(self, **kwargs):      return self.recv(line=True, **kwargs)
+    def rla(self, d, **kwargs):  return self.recv(d, line=True, **kwargs)
+    def ra(self):                return self.recvall()
+    def itrv(self):              return self.interactive()
+    def urecv(self):             return self.unrecv()
 
     def rln(self, n, **kwargs):
-        lines = []
-        for _ in range(n):
-            lines.append(self.rl(**kwargs))
-        return lines
-
-    def ra(self):
-        return self.recvall()
-
-    def itrv(self):
-        return self.interactive()
-
-    def urecv(self):
-        return self.unrecv()
+        return [self.rl(**kwargs) for _ in range(n)]
 
 
 ioctx = None
+
 
 def set_ctx(new_ctx: IOContext):
     global ioctx
     ioctx = new_ctx
 
+
 def _require_ctx():
     if ioctx is None:
-        raise RuntimeError("PwnContext not initialized (call set_ctx first)")
+        raise RuntimeError("IOContext not initialized — call set_ctx() first")
 
-def connect(host=None, port=None, default=False):
+
+def _ctx(method_name):
+    def wrapper(*args, **kwargs):
+        _require_ctx()
+        return getattr(ioctx, method_name)(*args, **kwargs)
+    wrapper.__name__ = method_name
+    return wrapper
+
+
+def connect(args=None, config=None, default=False):
     global ioctx
-
-    if host is not None:
-        ioctx.args.remote[1] = host
-
-    if port is not None:
-        ioctx.args.remote[2] = port
-
-    io = IOContext(ioctx.args, ioctx.config, ioctx.prefix, conn=ioctx.conn)
+    if not args:
+        args = ioctx.args
+    if not config:
+        config = ioctx.config
+    io = IOContext(args, config)
     if default:
         ioctx = io
     return io.connect()
 
 
-reconnect = lambda *a, **k: (_require_ctx(), ioctx.reconnect(*a, **k))[1]
-close = lambda *a, **k: (_require_ctx(), ioctx.close(*a, **k))[1]
-
-prompt = lambda *a, **k: (_require_ctx(), ioctx.prompt(*a, **k))[1]
-
-sla = lambda *a, **k: (_require_ctx(), ioctx.sla(*a, **k))[1]
-sa  = lambda *a, **k: (_require_ctx(), ioctx.sa(*a, **k))[1]
-sl  = lambda *a, **k: (_require_ctx(), ioctx.sl(*a, **k))[1]
-send = lambda *a, **k: (_require_ctx(), ioctx.send(*a, **k))[1]
-
-recv = lambda *a, **k: (_require_ctx(), ioctx.recv(*a, **k))[1]
-ru   = lambda *a, **k: (_require_ctx(), ioctx.ru(*a, **k))[1]
-ra   = lambda *a, **k: (_require_ctx(), ioctx.ra(*a, **k))[1]
-rl   = lambda *a, **k: (_require_ctx(), ioctx.rl(*a, **k))[1]
-rla  = lambda *a, **k: (_require_ctx(), ioctx.rla(*a, **k))[1]
-rln  = lambda *a, **k: (_require_ctx(), ioctx.rln(*a, **k))[1]
-
-urecv = lambda *a, **k: (_require_ctx(), ioctx.conn.unrecv(*a, **k))[1]
-clean = lambda *a, **k: (_require_ctx(), ioctx.conn.clean(*a, **k))[1]
-itrv = lambda *a, **k: (_require_ctx(), ioctx.conn.interactive(*a, **k))[1]
+reconnect = _ctx("reconnect")
+close     = _ctx("close")
+prompt    = _ctx("prompt")
+sla       = _ctx("sla")
+sa        = _ctx("sa")
+sl        = _ctx("sl")
+send      = _ctx("send")
+recv      = _ctx("recv")
+ru        = _ctx("ru")
+ra        = _ctx("ra")
+rl        = _ctx("rl")
+rla       = _ctx("rla")
+rln       = _ctx("rln")
+urecv     = _ctx("unrecv")
+clean     = _ctx("clean")
+itrv      = _ctx("interactive")

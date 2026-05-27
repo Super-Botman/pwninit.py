@@ -161,7 +161,7 @@ def cli():
     io.set_ctx(ctx)
 
     if context.binary:
-        ctx = helpers.PwnContext(io.ioctx.proc, context.binary, libc)
+        ctx = helpers.PwnContext(io.ioctx, context.binary, libc, config.prefix)
         helpers.set_ctx(ctx)
 
     try:
