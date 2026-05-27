@@ -17,7 +17,7 @@ class PwnContext:
 
     @property
     def canary(self):
-        if not self._canary and self.io and self.io.proc:
+        if not self._canary and self.io and self.io.proc and self.elf.canary:
             canary = 0x0
             auxv = open(f"/proc/{self.io.proc.pid}/auxv", "rb").read()
             word = context.bytes
@@ -63,6 +63,9 @@ class PwnContext:
             return bin.sym[symbol]
 
     def resolve(self, symbol):
+        if isinstance(symbol, int):
+            return symbol
+        
         for b in (self.libc, self.elf):
             try:
                 addr = self.__find_sym(symbol, b)
@@ -204,7 +207,7 @@ class PwnContext:
             opt |= {offset: bp}
             offset += context.bytes
 
-        return flat({offset: data} | opt, **kwargs)
+        return flat({offset: data} | opt)
 
     def ret2shellcode(self, addr, **kwargs):
         shellcode = asm(shellcraft.sh())
@@ -218,7 +221,7 @@ class PwnContext:
 
     def ret2win(self, win, params=[], **kwargs):
         addr = self.resolve(win)
-        payload = self.ropchain({addr: params})
+        payload = self.ropchain({addr: params}, **kwargs)
         return self.bof(payload, **kwargs)
 
     def ret2libc(self, **kwargs):
