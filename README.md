@@ -1,16 +1,14 @@
-# pwninit 🚧 WIP 🚧
-
-## We're currently redesigning the whole lib with a better code, a lot of helpers to automate exploitation and a lot more parameters to run the exploits.
+# pwninit
 
 A comprehensive Python toolkit for CTF binary exploitation challenges that streamlines the setup and execution process.
 
 ## Features
 
-- **Automated binary analysis** - Automatically detects and categorizes ELF binaries (challenge, libc, linker)
+- **Automated binary analysis** - Automatically detects and categorizes ELF binaries
 - **Library management** - Fetches matching libc and linker libraries using libcdb
 - **Binary patching** - Automatically patches binaries with correct libc/linker using patchelf
 - **Template generation** - Creates exploit templates and documentation stubs
-- **Multi-target execution** - Supports local, remote (netcat), and SSH execution modes
+- **Multi-target execution** - Supports local, remote, and SSH execution modes
 - **Debugging support** - Integrated GDB debugging with custom commands
 - **Provider system** - Extensible system for fetching challenges from various sources
 - **Utility plugins** - Modular utilities for common exploitation tasks
@@ -22,7 +20,6 @@ A comprehensive Python toolkit for CTF binary exploitation challenges that strea
 - Python 3.8+
 - patchelf
 - GDB (for debugging)
-- kitty terminal (recommended)
 
 ### Install from source
 
@@ -63,7 +60,7 @@ pwninit -p docker -tag 'chall_name'
 
 **Options:**
 
-- `-p, --provider <provider>` - Fetch challenge from URL or provider
+- `-p, --provider <provider>` - Set provider to run
 - `-s, --setup <utils>` - Comma-separated list of utilities to run
 
 ### run - Exploit Execution
@@ -107,8 +104,6 @@ run -r target.com:443 --ssl
 
 ### exploit.py - Exploits development
 
-You can use a variety of helpers from `pwninit.utils`:
-
 ```py
 from pwninit import *
 
@@ -122,10 +117,11 @@ def exploit(ctx: PwnContext, ioctx: IOContext):
     libc = ctx.libc
 
     # Example usage:
-    # resolve("main")     # get main address
-    # sl(b"payload")      # send line "payload"
+    # sl(ret2win("win"))     # generate a ret2win payload and send it
+    # itrv()                 # go into interactive mode
 
     success("all good !")
+    itrv()
 ```
 
 ## Generated Files
@@ -147,6 +143,10 @@ author=YourName
 You can also use environment variables:
 
 - `PWNINIT_AUTHOR` - Override author name
+
+## Architecture
+
+![schema of the whole project architecture](./doc/pwninit.png)
 
 ## TODO
 
