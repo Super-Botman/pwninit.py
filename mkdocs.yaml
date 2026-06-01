@@ -1,5 +1,5 @@
 site_name: pwninit Documentation
-site_url: https://yourusername.github.io/pwninit
+site_url: https://pwninit.0xb0tm4n.org
 
 theme:
   name: material
@@ -27,7 +27,6 @@ plugins:
   - mkdocstrings:
       handlers:
         python:
-          # This tells mkdocstrings exactly where your python source packages live
           paths: [src] 
 
 nav:
