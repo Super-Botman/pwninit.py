@@ -7,16 +7,33 @@ import docker
 from pwn import context, gdb, log, pause, process, remote, ssh
 
 from pwninit.kernel import inject
+import pwninit.helpers.utils as utils
 
 
 @dataclass
 class NC:
+    """
+    Dataclass for representing a network connection.
+
+    Attributes:
+        host (str): The host address.
+        port (int): The port number.
+    """
     host: str
     port: int
 
 
 @dataclass
 class SSH:
+    """
+    Dataclass for representing an SSH connection.
+
+    Attributes:
+        user (str): The SSH username.
+        host (str): The host address.
+        password (str): The SSH password (default: "").
+        port (int): The SSH port (default: 22).
+    """
     user: str
     host: str
     password: str = ""
@@ -24,6 +41,16 @@ class SSH:
 
 
 class IOContext:
+    """
+    A context class for managing IO connections (local, remote, SSH, Docker, kernel).
+
+    Attributes:
+        args: CLI arguments for the connection.
+        config: Configuration for the target (e.g., binary path, environment).
+        ssh_conn: The SSH connection object.
+        conn: The active connection object (e.g., `process`, `remote`, `ssh`).
+        proc: The process object for local debugging.
+    """
     def __init__(self, args, config, proc=None, conn=None, ssh_conn=None):
         self.args = args
         self.config = config
@@ -181,6 +208,15 @@ class IOContext:
         gdb.attach(pid, exe=self.config.binary)
 
     def connect(self, enable_log=True):
+        """
+        Establish a connection based on the provided arguments and configuration.
+
+        Args:
+            enable_log (bool): If True, enable logging (default: True).
+
+        Returns:
+            int: 0 on success, 1 on failure.
+        """
         if not enable_log:
             log_level = context.log_level
             context.log_level = "error"
@@ -229,11 +265,26 @@ class IOContext:
         return self
 
     def reconnect(self, enable_log=True):
+        """
+        Close the current connection and reconnect.
+
+        Args:
+            enable_log (bool): If True, enable logging (default: True).
+
+        Returns:
+            IOContext: The reconnected context.
+        """
         if self.conn:
             self.close(enable_log)
         return self.connect(enable_log)
 
     def close(self, enable_log=True):
+        """
+        Close the current connection.
+
+        Args:
+            enable_log (bool): If True, enable logging (default: True).
+        """
         if not self.conn:
             return
         if not enable_log:
@@ -244,18 +295,18 @@ class IOContext:
         if not enable_log:
             context.log_level = log_level
 
-    def encode(self, data):
-        if isinstance(data, int):
-            data = str(data).encode()
-        elif isinstance(data, str):
-            data = data.encode()
-        return data
-
     def prompt(self, data, **kwargs):
-        data = self.encode(data)
+        """
+        Send data to the target, optionally waiting for a prefix.
+
+        Args:
+            data: The data to send.
+            **kwargs: Additional arguments for `send`/`sendline` (e.g., `prefix`, `line`).
+        """
+        data = utils.encode(data)
         r = kwargs.pop("io", self.conn)
-        prefix = self.encode(kwargs.pop("prefix", self.config.prefix))
-        line = self.encode(kwargs.pop("line", True))
+        prefix = utils.encode(kwargs.pop("prefix", self.config.prefix))
+        line = utils.encode(kwargs.pop("line", True))
         if prefix is not None:
             if line:
                 r.sendlineafter(prefix, data, **kwargs)
@@ -268,21 +319,59 @@ class IOContext:
                 r.send(data, **kwargs)
 
     def sla(self, *args, **kwargs):
+        """
+        Send a line after a prefix (shorthand for `prompt` with `line=True`).
+
+        Args:
+            *args: If one argument, it is the data to send. If two, the first is the prefix and the second is the data.
+            **kwargs: Additional arguments for `prompt`.
+        """
         if len(args) == 1:
             self.prompt(args[0], **kwargs)
         elif len(args) >= 2:
             self.prompt(args[1], prefix=args[0], **kwargs)
 
     def sa(self, *args, **kwargs):
+        """
+        Send data after a prefix (shorthand for `prompt` with `line=False`).
+
+        Args:
+            *args: If one argument, it is the data to send. If two, the first is the prefix and the second is the data.
+            **kwargs: Additional arguments for `prompt`.
+        """
         self.sla(*args, line=False, **kwargs)
 
     def sl(self, data, **kwargs):
+        """
+        Send a line without waiting for a prefix.
+
+        Args:
+            data: The data to send.
+            **kwargs: Additional arguments for `prompt`.
+        """
         self.prompt(data, prefix=None, **kwargs)
 
     def send(self, data, **kwargs):
+        """
+        Send data without waiting for a prefix or newline.
+
+        Args:
+            data: The data to send.
+            **kwargs: Additional arguments for `prompt`.
+        """
         self.prompt(data, prefix=None, line=False, **kwargs)
 
     def recv(self, prefix=None, **kwargs):
+        """
+        Receive data from the target, optionally waiting for a prefix.
+
+        Args:
+            prefix: The prefix to wait for (bytes, str, or int for `recvn`).
+            **kwargs: Additional arguments for `recv`/`recvline`/`recvuntil`.
+
+        Returns:
+            bytes: The received data.
+        """
         r = kwargs.pop("io", self.conn)
         line = kwargs.pop("line", False)
         if prefix is None:
@@ -300,26 +389,79 @@ class IOContext:
                 return r.recvuntil(prefix, drop=drop, **kwargs)
 
     def ru(self, u, **kwargs):
+        """
+        Receive data until a specific string (shorthand for `recv` with `prefix`).
+
+        Args:
+            u: The string to wait for.
+            **kwargs: Additional arguments for `recv`.
+        """
         return self.recv(u, **kwargs)
 
     def rl(self, **kwargs):
+        """
+        Receive a line (shorthand for `recv` with `line=True`).
+
+        Returns:
+            bytes: The received line.
+        """
         return self.recv(line=True, **kwargs)
 
     def rla(self, d, **kwargs):
+        """
+        Receive a line after a specific string (shorthand for `recv` with `prefix` and `line=True`).
+
+        Args:
+            d: The string to wait for.
+            **kwargs: Additional arguments for `recv`.
+        """
         return self.recv(d, line=True, **kwargs)
 
     def ra(self):
+        """
+        Receive all remaining data.
+
+        Returns:
+            bytes: All remaining data.
+        """
         return self.recvall()
 
     def itrv(self):
+        """
+        Switch to interactive mode.
+
+        Returns:
+            Any: The result of the interactive session.
+        """
         return self.interactive()
 
     def urecv(self):
+        """
+        Undo the last receive operation.
+
+        Returns:
+            bytes: The data that was un-received.
+        """
         return self.unrecv()
 
     def rln(self, n, **kwargs):
+        """
+        Receive `n` lines.
+
+        Args:
+            n (int): The number of lines to receive.
+            **kwargs: Additional arguments for `recv`.
+
+        Returns:
+            list: A list of received lines.
+        """
         return [self.rl(**kwargs) for _ in range(n)]
 
+    def pow(self):
+        """
+        Solve any pows implemented in utils using what's been received
+        """
+        utils.solve_pow(self.clean())
 
 ioctx = None
 
@@ -371,3 +513,4 @@ rln = _ctx("rln")
 urecv = _ctx("unrecv")
 clean = _ctx("clean")
 itrv = _ctx("interactive")
+pow = _ctx("pow")

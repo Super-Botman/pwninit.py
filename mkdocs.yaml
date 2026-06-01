@@ -1,0 +1,43 @@
+site_name: pwninit Documentation
+site_url: https://yourusername.github.io/pwninit
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue grey
+      accent: red
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue grey
+      accent: red
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          # This tells mkdocstrings exactly where your python source packages live
+          paths: [src] 
+
+nav:
+  # - Home: index.md
+  - Pwninit:
+    - Core:
+      # - Configuration: api/config.md
+      - IO Operations: pwninit/io.md
+      - Plugins: pwninit/plugins.md
+      # - Kernel: api/kernel.md
+      - Helpers:
+        - Pwncontext: pwninit/helpers/pwncontext.md
+        - Utils: pwninit/helpers/utils.md

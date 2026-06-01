@@ -4,7 +4,7 @@ import sys
 
 from pwn import ELF, context, log
 
-import pwninit.helpers as helpers
+import pwninit.helpers.pwncontext as helpers
 import pwninit.io as io
 from pwninit.farm import run_farm
 

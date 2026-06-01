@@ -205,7 +205,7 @@ def fetch_libs(bins: dict) -> bool:
 
     lib_path = libcdb.download_libraries(libc)
     if lib_path is None:
-        log.error("libcdb couldn't find libraries for this libc")
+        log.warn("libcdb couldn't find libraries for this libc")
         return False
 
     lib_path = Path(lib_path)
@@ -384,8 +384,8 @@ def setup_libc_ld(bins: dict, path: Path) -> bool:
 
     if not fetch_libs(sorted_bins):
         p.failure("Cannot fetch libs")
-        return False
-    p.success("done")
+    else:
+        p.success("done")
 
     if sorted_bins["libc"] and sorted_bins["ld"]:
         try:
@@ -494,7 +494,8 @@ def cli() -> int:
 
     sorted_bins = process_binaries(path)
     if sorted_bins:
-        if (path / "Dockerfile").exists():
+        build = input(f"Do you want to build the docker image ? [y,N]: ")
+        if (path / "Dockerfile").exists() and build.lower() == 'y':
             name = path.resolve().name
             image_tag = f"pwninit-{name}:latest".lower()
             try:

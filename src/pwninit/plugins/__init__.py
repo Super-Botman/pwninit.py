@@ -10,29 +10,82 @@ PLUGIN_DIR = Path.home() / ".config" / "pwninit" / "plugins"
 
 
 class Plugin:
+    """
+    Base class for all pwninit plugins.
+
+    Plugins must inherit from this class and implement the `provide` and/or `setup` methods.
+    Plugins can also define `provide_args` and `setup_args` to specify CLI arguments for each role.
+
+    Attributes:
+        name (str): The name of the plugin.
+        description (str): A brief description of the plugin's purpose.
+        provide_args (list): List of argument dictionaries for the `provide` role.
+        setup_args (list): List of argument dictionaries for the `setup` role.
+    """
+
     name = None
     description = ""
     provide_args = []
     setup_args = []
 
     def provide(self, args, path):
+        """
+        Provide functionality for the plugin (e.g., generate payloads, files, or configurations).
+
+        Args:
+            args: Parsed arguments for the `provide` role.
+            path: Path to the target binary or directory.
+
+        Raises:
+            NotImplementedError: If not overridden by the subclass.
+        """
         raise NotImplementedError
 
     def setup(self, args, bins):
+        """
+        Set up the environment or perform pre-exploitation tasks (e.g., start a service, patch a binary).
+
+        Args:
+            args: Parsed arguments for the `setup` role.
+            bins: List of binaries to set up.
+
+        Raises:
+            NotImplementedError: If not overridden by the subclass.
+        """
         raise NotImplementedError
 
     @property
     def has_provide(self):
+        """
+        Check if the plugin implements the `provide` method.
+
+        Returns:
+            bool: True if the plugin overrides `provide`, False otherwise.
+        """
         return type(self).provide is not Plugin.provide
 
     @property
     def has_setup(self):
+        """
+        Check if the plugin implements the `setup` method.
+
+        Returns:
+            bool: True if the plugin overrides `setup`, False otherwise.
+        """
         return type(self).setup is not Plugin.setup
 
-
 def arg(name, **kwargs):
-    return {"name": name, **kwargs}
+    """
+    Helper function to define a plugin argument.
 
+    Args:
+        name (str): The name of the argument.
+        **kwargs: Additional keyword arguments for `argparse.ArgumentParser.add_argument`.
+
+    Returns:
+        dict: A dictionary representing the argument configuration.
+    """
+    return {"name": name, **kwargs}
 
 def _load_plugin(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -87,12 +140,23 @@ def _parse_plugin_args(plugin, raw_args, role):
 
 
 def run_plugins(args, role, settings):
+    """
+    Run a plugin with the specified role and arguments.
+
+    Args:
+        args (list): CLI arguments, where the first element is the plugin name.
+        role (str): The role (`provide` or `setup`).
+        settings: Additional settings or context for the plugin.
+
+    Returns:
+        Any: The result of the plugin's `provide` or `setup` method, or None if the plugin fails.
+    """
     plugin = _resolve(args[0])
     if plugin is None:
         log.error("Plugin '%s' not found" % args[0])
         return None
 
-    parsed = _parse_plugin_args(plugin, args[1], role)
+    parsed = _parse_plugin_args(plugin, args[1:], role)
     if parsed is None:
         return None
 
@@ -103,7 +167,6 @@ def run_plugins(args, role, settings):
     else:
         log.error("Plugin '%s' has no %s()" % (args[0], role))
         return None
-
 
 def _get_infos(dir, source="built-in"):
     seen = {}
@@ -190,8 +253,10 @@ def _format_arg(a):
         parts += " (default: %s)" % default
     return parts
 
-
 def print_plugin_list():
+    """
+    Print a list of all available plugins and their usage information.
+    """
     plugins = _list_plugins()
     if not plugins:
         log.info("No plugins found")
