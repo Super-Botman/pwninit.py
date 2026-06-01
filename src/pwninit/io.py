@@ -2,6 +2,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import docker
 from pwn import context, gdb, log, pause, process, remote, ssh
@@ -10,7 +11,7 @@ from pwninit.kernel import inject
 import pwninit.helpers.utils as utils
 
 
-@dataclass
+@dataclass(frozen=True)
 class NC:
     """
     Dataclass for representing a network connection.
@@ -19,11 +20,12 @@ class NC:
         host (str): The host address.
         port (int): The port number.
     """
+
     host: str
     port: int
 
 
-@dataclass
+@dataclass(frozen=True)
 class SSH:
     """
     Dataclass for representing an SSH connection.
@@ -34,10 +36,12 @@ class SSH:
         password (str): The SSH password (default: "").
         port (int): The SSH port (default: 22).
     """
+
     user: str
     host: str
     password: str = ""
     port: int = 22
+    path: str = "."
 
 
 class IOContext:
@@ -51,57 +55,52 @@ class IOContext:
         conn: The active connection object (e.g., `process`, `remote`, `ssh`).
         proc: The process object for local debugging.
     """
-    def __init__(self, args, config, proc=None, conn=None, ssh_conn=None):
+
+    def __init__(
+        self,
+        args: Any,
+        config: Any,
+        proc: Any | None = None,
+        conn: Any | None = None,
+        ssh_conn: Any | None = None,
+    ) -> None:
         self.args = args
         self.config = config
-        self.ssh_conn = ssh_conn
-        self.conn = conn
-        self.proc = proc
+        self.ssh_conn: Any | None = ssh_conn
+        self.conn: Any | None = conn
+        self.proc: Any | None = proc
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         if name != "conn" and self.conn is not None:
             return getattr(self.conn, name)
         raise AttributeError(name)
 
-    def __create_remote_connection(self):
-        if isinstance(self.args.remote, NC):
-            try:
-                return remote(
-                    self.args.remote.host, self.args.remote.port, ssl=self.args.ssl
-                )
-            except Exception as e:
-                log.error(
-                    "Failed to connect to %s:%d - %s"
-                    % (self.args.remote.host, self.args.remote.port, str(e))
-                )
+    def __create_remote_connection(self) -> Any:
+        return remote(
+            self.args.remote.host,
+            self.args.remote.port,
+            ssl=self.args.ssl,
+        )
 
-        elif isinstance(self.args.remote, SSH):
-            try:
-                return ssh(
-                    user=self.args.remote.user,
-                    password=self.args.remote.password,
-                    host=self.args.remote.host,
-                    port=self.args.remote.port,
-                )
-            except Exception as e:
-                log.error("SSH connection failed: %s" % str(e))
+    def __create_ssh_connection(self) -> Any:
+        return ssh(
+            user=self.args.remote.user,
+            password=self.args.remote.password,
+            host=self.args.remote.host,
+            port=self.args.remote.port,
+        )
 
-    def __create_ssh_process(self):
-        if self.args.path:
-            chall_path = str(Path(self.args.path) / self.config.chall)
+    def __create_ssh_process(self) -> Any:
+        if self.args.debug:
+            return gdb.debug(self.config.chall, ssh=self.ssh_conn, cwd=self.args.remote.path)
         else:
-            chall_path = self.config.chall
-        try:
-            if self.args.debug:
-                return gdb.debug(chall_path, ssh=self.ssh_conn)
-            else:
-                return self.ssh_conn.process(chall_path, env=self.config.env)
-        except Exception as e:
-            log.error("Failed to create SSH process: %s" % str(e))
+            return self.ssh_conn.process(self.config.chall, env=self.config.env, cwd=self.args.remote.path)
 
-    def __create_kernel_process(self):
+    def __create_kernel_process(self) -> Any:
         status = log.progress("compiling exploit")
-        subprocess.run(["make"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            ["make"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
         status.success("done")
 
         status = log.progress("injecting exploit")
@@ -125,48 +124,47 @@ class IOContext:
 
         return p
 
-    def __create_local_process(self):
-        try:
-            if self.config.archive:
-                return self.__create_kernel_process()
+    def __create_local_process(self) -> Any:
+        if self.config.archive:
+            return self.__create_kernel_process()
 
-            gdb_script = self.args.gdb_cmd if self.args.gdb_cmd else ""
-            if self.args.debug:
-                return gdb.debug(
-                    self.config.chall, gdbscript=gdb_script, env=self.config.env
-                )
-            elif self.args.strace:
-                return process(
-                    ["strace", "-o", "strace.out", self.config.chall],
-                    env=self.config.env,
-                )
-            else:
-                p = process(self.config.chall, env=self.config.env)
-                if self.args.attach:
-                    gdb.attach(p, gdbscript=gdb_script)
-                    log.info("Attached gdb")
-                    pause()
-                return p
-        except Exception as e:
-            log.error("Failed to create local process: %s" % str(e))
+        gdb_script = self.args.gdb_cmd if self.args.gdb_cmd else ""
+        if self.args.debug:
+            return gdb.debug(
+                self.config.chall,
+                gdbscript=gdb_script,
+                env=self.config.env,
+            )
+        elif self.args.strace:
+            return process(
+                ["strace", "-o", "strace.out", self.config.chall],
+                env=self.config.env,
+            )
+        else:
+            p = process(self.config.chall, env=self.config.env)
+            if self.args.attach:
+                gdb.attach(p, gdbscript=gdb_script)
+                log.info("Attached gdb")
+                pause()
+            return p
 
-    def __launch_docker(self):
+    def __launch_docker(self) -> Any:
         client = docker.from_env()
         name = Path(".").resolve().name
         image_tag = getattr(
             self.config, "docker_image", f"pwninit-{name}:latest"
         ).lower()
 
-        container = next(
-            (c for c in client.containers.list() if c.image.tags[-1] == image_tag), None
-        )
+        container = next((c for c in client.containers.list() if c.image.tags[-1] == image_tag), None)
 
         if not container:
             try:
                 container = client.containers.run(
                     image_tag,
                     pid_mode="host",
-                    ports={f"{self.args.remote.port}/tcp": self.args.remote.port},
+                    ports={
+                        f"{self.args.remote.port}/tcp": self.args.remote.port
+                    },
                     privileged=True,
                     detach=True,
                 )
@@ -176,10 +174,10 @@ class IOContext:
 
         return container
 
-    def __debug_docker(self, container):
+    def __debug_docker(self, container: Any) -> None:
         processes = container.top()
-        pid = None
-        bin = None
+        pid: int | None = None
+        bin: str | None = None
 
         if hasattr(self.config, "docker_bin"):
             bin = self.config.docker_bin
@@ -193,7 +191,9 @@ class IOContext:
                     break
 
             if not bin and not pid:
-                log.warning("No socat running nor binary — set docker_bin in Config")
+                log.warning(
+                    "No socat running nor binary — set docker_bin in Config"
+                )
                 exit(1)
 
         if not pid:
@@ -207,7 +207,16 @@ class IOContext:
 
         gdb.attach(pid, exe=self.config.binary)
 
-    def connect(self, enable_log=True):
+    def test_connection(self) -> bool:
+        try:
+            buf = self.recv(timeout=2)
+            self.unrecv(buf)
+            return True
+        except EOFError:
+            log.warning("Failed to connect to docker")
+            return False
+
+    def connect(self, enable_log: bool = True) -> "IOContext | None":
         """
         Establish a connection based on the provided arguments and configuration.
 
@@ -215,56 +224,51 @@ class IOContext:
             enable_log (bool): If True, enable logging (default: True).
 
         Returns:
-            int: 0 on success, 1 on failure.
+            self: On success.
+            None: On failure.
         """
         if not enable_log:
             log_level = context.log_level
             context.log_level = "error"
 
+        if self.conn:
+            return self
+
+        is_local_process = not self.args.remote or (
+            self.args.local and not self.proc
+        )
+        is_docker_debug = self.args.docker and (
+            self.args.debug or self.args.attach
+        )
+        is_ssh = isinstance(self.args.remote, SSH)
+
+        if is_local_process:
+            self.conn = self.proc = self.__create_local_process()
+            
+        if self.args.docker:
+            container = self.__launch_docker()
+
+        if self.args.remote and is_ssh:
+            self.ssh_conn = self.__create_ssh_connection()
+            if not self.ssh_conn:
+                return None
+            self.conn = self.__create_ssh_process()
+        elif self.args.remote:
+            self.conn = self.__create_remote_connection()
+
+        if is_docker_debug and self.test_connection():
+            self.__debug_docker(container)
+
         if not self.conn:
-            if (self.args.local or self.args.docker) and not self.args.remote:
-                self.args.remote = NC("localhost", 5000)
-
-            if not self.args.remote or self.args.local and not self.proc:
-                self.proc = io = self.__create_local_process()
-
-            if self.args.docker:
-                container = self.__launch_docker()
-
-            if self.args.remote:
-                if isinstance(self.args.remote, SSH):
-                    if not self.ssh_conn:
-                        self.ssh_conn = self.__create_remote_connection()
-                        if not self.ssh_conn:
-                            return 1
-                    io = self.__create_ssh_process()
-                else:
-                    if self.args.local:
-                        time.sleep(0.2)
-                    io = self.__create_remote_connection()
-
-            if self.args.docker and (self.args.debug or self.args.attach):
-                try:
-                    buf = io.recv(timeout=2)
-                    io.unrecv(buf)
-                except:
-                    log.warning("Failed to connect to docker")
-                    exit(1)
-
-                self.__debug_docker(container)
-
-            if not io:
-                log.warning("Failed to create process")
-                exit(1)
-
-            self.conn = io
+            log.warning("Failed to create process")
+            return None
 
         if not enable_log:
             context.log_level = log_level
 
         return self
 
-    def reconnect(self, enable_log=True):
+    def reconnect(self, enable_log: bool = True) -> "IOContext | None":
         """
         Close the current connection and reconnect.
 
@@ -272,13 +276,13 @@ class IOContext:
             enable_log (bool): If True, enable logging (default: True).
 
         Returns:
-            IOContext: The reconnected context.
+            IOContext | None: The reconnected context, or None on failure.
         """
         if self.conn:
             self.close(enable_log)
         return self.connect(enable_log)
 
-    def close(self, enable_log=True):
+    def close(self, enable_log: bool = True) -> None:
         """
         Close the current connection.
 
@@ -295,7 +299,7 @@ class IOContext:
         if not enable_log:
             context.log_level = log_level
 
-    def prompt(self, data, **kwargs):
+    def prompt(self, data: str | bytes, **kwargs: Any) -> None:
         """
         Send data to the target, optionally waiting for a prefix.
 
@@ -303,22 +307,21 @@ class IOContext:
             data: The data to send.
             **kwargs: Additional arguments for `send`/`sendline` (e.g., `prefix`, `line`).
         """
-        data = utils.encode(data)
-        r = kwargs.pop("io", self.conn)
         prefix = utils.encode(kwargs.pop("prefix", self.config.prefix))
         line = utils.encode(kwargs.pop("line", True))
-        if prefix is not None:
-            if line:
-                r.sendlineafter(prefix, data, **kwargs)
-            else:
-                r.sendafter(prefix, data, **kwargs)
-        else:
-            if line:
-                r.sendline(data, **kwargs)
-            else:
-                r.send(data, **kwargs)
+        data = utils.encode(data)
+        r = self.conn
 
-    def sla(self, *args, **kwargs):
+        if prefix and line:
+            r.sendlineafter(prefix, data, **kwargs)
+        elif prefix:
+            r.sendafter(prefix, data, **kwargs)
+        elif not prefix and line:
+            r.sendline(data, **kwargs)
+        else:
+            r.send(data, **kwargs)
+
+    def sla(self, *args: str | bytes, **kwargs: Any) -> None:
         """
         Send a line after a prefix (shorthand for `prompt` with `line=True`).
 
@@ -331,7 +334,7 @@ class IOContext:
         elif len(args) >= 2:
             self.prompt(args[1], prefix=args[0], **kwargs)
 
-    def sa(self, *args, **kwargs):
+    def sa(self, *args: str | bytes, **kwargs: Any) -> None:
         """
         Send data after a prefix (shorthand for `prompt` with `line=False`).
 
@@ -341,7 +344,7 @@ class IOContext:
         """
         self.sla(*args, line=False, **kwargs)
 
-    def sl(self, data, **kwargs):
+    def sl(self, data: str | bytes, **kwargs: Any) -> None:
         """
         Send a line without waiting for a prefix.
 
@@ -351,7 +354,7 @@ class IOContext:
         """
         self.prompt(data, prefix=None, **kwargs)
 
-    def send(self, data, **kwargs):
+    def send(self, data: str | bytes, **kwargs: Any) -> None:
         """
         Send data without waiting for a prefix or newline.
 
@@ -361,7 +364,11 @@ class IOContext:
         """
         self.prompt(data, prefix=None, line=False, **kwargs)
 
-    def recv(self, prefix=None, **kwargs):
+    def recv(
+        self,
+        prefix: str | bytes | int | None = None,
+        **kwargs: Any,
+    ) -> bytes:
         """
         Receive data from the target, optionally waiting for a prefix.
 
@@ -374,21 +381,21 @@ class IOContext:
         """
         r = kwargs.pop("io", self.conn)
         line = kwargs.pop("line", False)
+
         if prefix is None:
             return r.recvline(**kwargs) if line else r.recv(**kwargs)
         elif isinstance(prefix, int):
             return r.recvn(prefix, **kwargs)
-        else:
-            if isinstance(prefix, str):
-                prefix = prefix.encode()
-            drop = kwargs.pop("drop", True)
-            if line:
-                r.recvuntil(prefix, drop=drop, **kwargs)
-                return r.recvline(drop=drop, **kwargs)
-            else:
-                return r.recvuntil(prefix, drop=drop, **kwargs)
 
-    def ru(self, u, **kwargs):
+        prefix = utils.encode(prefix)
+        drop = kwargs.pop("drop", True)
+        if line:
+            r.recvuntil(prefix, drop=drop, **kwargs)
+            return r.recvline(drop=drop, **kwargs)
+        else:
+            return r.recvuntil(prefix, drop=drop, **kwargs)
+
+    def ru(self, u: str | bytes, **kwargs: Any) -> bytes:
         """
         Receive data until a specific string (shorthand for `recv` with `prefix`).
 
@@ -398,7 +405,7 @@ class IOContext:
         """
         return self.recv(u, **kwargs)
 
-    def rl(self, **kwargs):
+    def rl(self, **kwargs: Any) -> bytes:
         """
         Receive a line (shorthand for `recv` with `line=True`).
 
@@ -407,7 +414,7 @@ class IOContext:
         """
         return self.recv(line=True, **kwargs)
 
-    def rla(self, d, **kwargs):
+    def rla(self, d: str | bytes, **kwargs: Any) -> bytes:
         """
         Receive a line after a specific string (shorthand for `recv` with `prefix` and `line=True`).
 
@@ -417,7 +424,7 @@ class IOContext:
         """
         return self.recv(d, line=True, **kwargs)
 
-    def ra(self):
+    def ra(self) -> bytes:
         """
         Receive all remaining data.
 
@@ -426,7 +433,7 @@ class IOContext:
         """
         return self.recvall()
 
-    def itrv(self):
+    def itrv(self) -> Any:
         """
         Switch to interactive mode.
 
@@ -435,7 +442,7 @@ class IOContext:
         """
         return self.interactive()
 
-    def urecv(self):
+    def urecv(self) -> bytes:
         """
         Undo the last receive operation.
 
@@ -444,7 +451,7 @@ class IOContext:
         """
         return self.unrecv()
 
-    def rln(self, n, **kwargs):
+    def rln(self, n: int, **kwargs: Any) -> list[bytes]:
         """
         Receive `n` lines.
 
@@ -453,31 +460,32 @@ class IOContext:
             **kwargs: Additional arguments for `recv`.
 
         Returns:
-            list: A list of received lines.
+            list[bytes]: A list of received lines.
         """
         return [self.rl(**kwargs) for _ in range(n)]
 
-    def pow(self):
+    def pow(self) -> None:
         """
-        Solve any pows implemented in utils using what's been received
+        Solve any pows implemented in utils using what's been received.
         """
         utils.solve_pow(self.clean())
 
-ioctx = None
+
+ioctx: IOContext | None = None
 
 
-def set_ctx(new_ctx: IOContext):
+def set_ctx(new_ctx: IOContext) -> None:
     global ioctx
     ioctx = new_ctx
 
 
-def _require_ctx():
+def _require_ctx() -> None:
     if ioctx is None:
         raise RuntimeError("IOContext not initialized — call set_ctx() first")
 
 
-def _ctx(method_name):
-    def wrapper(*args, **kwargs):
+def _ctx(method_name: str) -> Any:
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         _require_ctx()
         return getattr(ioctx, method_name)(*args, **kwargs)
 
@@ -485,7 +493,11 @@ def _ctx(method_name):
     return wrapper
 
 
-def connect(args=None, config=None, default=False):
+def connect(
+    args: Any | None = None,
+    config: Any | None = None,
+    default: bool = False,
+) -> IOContext | None:
     global ioctx
     if not args:
         args = ioctx.args
@@ -497,20 +509,20 @@ def connect(args=None, config=None, default=False):
     return io.connect()
 
 
-reconnect = _ctx("reconnect")
-close = _ctx("close")
-prompt = _ctx("prompt")
-sla = _ctx("sla")
-sa = _ctx("sa")
-sl = _ctx("sl")
-send = _ctx("send")
-recv = _ctx("recv")
-ru = _ctx("ru")
-ra = _ctx("ra")
-rl = _ctx("rl")
-rla = _ctx("rla")
-rln = _ctx("rln")
-urecv = _ctx("unrecv")
-clean = _ctx("clean")
-itrv = _ctx("interactive")
-pow = _ctx("pow")
+reconnect: Any = _ctx("reconnect")
+close: Any = _ctx("close")
+prompt: Any = _ctx("prompt")
+sla: Any = _ctx("sla")
+sa: Any = _ctx("sa")
+sl: Any = _ctx("sl")
+send: Any = _ctx("send")
+recv: Any = _ctx("recv")
+ru: Any = _ctx("ru")
+ra: Any = _ctx("ra")
+rl: Any = _ctx("rl")
+rla: Any = _ctx("rla")
+rln: Any = _ctx("rln")
+urecv: Any = _ctx("unrecv")
+clean: Any = _ctx("clean")
+itrv: Any = _ctx("interactive")
+pow: Any = _ctx("pow")

@@ -8,21 +8,35 @@ import pwninit.helpers.pwncontext as helpers
 import pwninit.io as io
 from pwninit.farm import run_farm
 
-
-def addr_type(value):
+def addr_type(value: str) -> io.SSH | io.NC:
     if "@" in value:
-        creds, addr = value.split("@", 1)
+        creds, rest = value.split("@", 1)
         user, password = creds.split(":", 1) if ":" in creds else (creds, "")
-        host, port = addr.split(":", 1) if ":" in addr else (addr, 22)
-        return io.SSH(user, host, password, int(port))
+        parts = rest.split(":")
+
+        if len(parts) == 3:
+            host, port, path = parts
+        elif len(parts) == 2:
+            if parts[1].startswith("/"):
+                host, path = parts
+                port = 22
+            else:
+                host, port = parts
+                path = "."
+        else:
+            host = parts[0]
+            port, path = 22, "."
+
+        return io.SSH(user, host, password, int(port), path)
+
     elif ":" in value:
         host, port = value.split(":", 1)
         return io.NC(host or "localhost", int(port))
+
     else:
         raise argparse.ArgumentTypeError(
-            "Invalid format. Expected 'ip:port', 'user@ip', or 'user:pass@ip:port'."
+            "Invalid format. Expected 'ip:port', 'user@ip:port', 'user@ip:/path', or 'user:pass@ip:port:/path'."
         )
-
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Runner for pwn exploits.")
@@ -44,13 +58,6 @@ def parse_args():
         help="start the chall as a server (default port 1337, override with -r :port)",
     )
     target.add_argument("-S", "--ssl", action="store_true", help="enable ssl")
-    target.add_argument(
-        "-p",
-        "--path",
-        action="store",
-        metavar="'/challenge'",
-        help="challenge path on remote ssh host",
-    )
 
     # --- Debug ---
     debug = parser.add_argument_group("debug")
@@ -100,8 +107,6 @@ def parse_args():
         log.error("--gdb-cmd requires --debug or --attach")
     if args.debug and args.attach:
         log.error("--debug and --attach are mutually exclusive")
-    if args.path and not args.remote:
-        log.error("--path requires -r")
 
     return args
 
@@ -156,8 +161,12 @@ def cli():
     if args.farm:
         return run_farm(args, config, exploit)
 
+    if (args.local or args.docker) and not args.remote:
+        args.remote = io.NC("localhost", 5000)
+
     ctx = io.IOContext(args, config)
-    ctx.connect()
+    if not ctx.connect():
+        return 1
     io.set_ctx(ctx)
 
     if context.binary:

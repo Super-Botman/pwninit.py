@@ -1,7 +1,8 @@
 import math
 import re
 
-from pwn import ROP, asm, context, log, rol, ror, unpack, u64, u32, u16
+from pwninit.helpers.constants import *
+from pwn import ELF, ROP, asm, context, log, rol, ror, unpack, u64, u32, u16, flat
 
 pu64=u64
 pu32=u32
