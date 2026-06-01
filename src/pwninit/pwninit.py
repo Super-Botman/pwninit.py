@@ -9,7 +9,7 @@ from pathlib import Path
 
 import magic
 from mako.template import Template
-from pwn import ELF, context, libcdb, log
+from pwn import ELF, context, libcdb, log, parse_ldd_output
 
 from pwninit.config import config
 from pwninit.kernel import decompress
@@ -54,6 +54,7 @@ KERNEL_STRINGS = ["linux kernel", "bzimage", "zimage"]
 
 SHELL_MIMES = {"text/x-shellscript"}
 
+
 def is_archive(path: str) -> bool:
     mime = magic.from_file(path, mime=True)
     desc = magic.from_file(path).lower()
@@ -70,17 +71,26 @@ def is_archive(path: str) -> bool:
         if decompressed != data:
             inner_mime = magic.from_buffer(decompressed, mime=True)
             inner_desc = magic.from_buffer(decompressed).lower()
-            return inner_mime in ARCHIVE_MIMES or any(s in inner_desc for s in ARCHIVE_STRINGS)
+            return inner_mime in ARCHIVE_MIMES or any(
+                s in inner_desc for s in ARCHIVE_STRINGS
+            )
     except Exception:
         pass
 
     return False
 
+
 def is_elf(path: str) -> bool:
     return magic.from_file(path, mime=True) in ELF_MIMES
 
+
+def is_lib(path: str) -> bool:
+    return magic.from_file(path, mime=True) == "application/x-sharedlib"
+
+
 def is_kernel(path: str) -> bool:
     return any(s in magic.from_file(path).lower() for s in KERNEL_STRINGS)
+
 
 def is_shell(path: str) -> bool:
     mime = magic.from_file(path, mime=True)
@@ -89,11 +99,10 @@ def is_shell(path: str) -> bool:
     desc = magic.from_file(path).lower()
     return not any(s in desc for s in ("bash", "zsh", "fish", "csh"))
 
+
 def ls(dir: Path) -> dict:
     files = [
-        Path(dir) / f
-        for f in os.listdir(dir)
-        if os.path.isfile(os.path.join(dir, f))
+        Path(dir) / f for f in os.listdir(dir) if os.path.isfile(os.path.join(dir, f))
     ]
 
     result = {"elf": [], "kernel": [], "archive": [], "shell": []}
@@ -123,8 +132,9 @@ def ls(dir: Path) -> dict:
 
     return result
 
+
 def sort_bins(files: dict) -> dict:
-    bins = {"libc": [], "ld": [], "challs": []}
+    bins = {"libc": [], "ld": [], "challs": [], "libs": []}
     is_kernel = bool(files["kernel"])
 
     for f in files["elf"]:
@@ -143,11 +153,14 @@ def sort_bins(files: dict) -> dict:
         ):
             bins["ld"].append(f)
 
+        elif is_kernel and f.endswith(".ko"):
+            bins["challs"] = [f]
+
+        elif is_lib(f):
+            bins["libs"].append(f)
+
         else:
-            if is_kernel and f.endswith(".ko"):
-                bins["challs"] = [f]
-            elif not (is_kernel and bins["challs"] and bins["challs"][0].endswith(".ko")):
-                bins["challs"].append(f)
+            bins["challs"].append(f)
 
         os.chmod(f, 0o755)
 
@@ -158,11 +171,10 @@ def process_binaries(path: Path) -> dict | None:
     files = ls(path)
 
     for key, val in files.items():
-        if val:
+        if val and key != "elf":
             log.success("%s found: %s" % (key, ", ".join(val)))
 
-
-    if not files["elf"] and not files['kernel']:
+    if not files["elf"] and not files["kernel"]:
         return None
     else:
         files["elf"] = sort_bins(files)
@@ -173,23 +185,75 @@ def process_binaries(path: Path) -> dict | None:
     return files
 
 
-def fetch_ld(bins: dict, path: Path) -> bool:
-    for libc in bins["libc"]:
-        lib_path = libcdb.download_libraries(libc)
-        if lib_path is None:
-            continue
-        ld_src = Path(lib_path) / "ld-linux-x86-64.so.2"
-        ld_dst = path / "ld-linux-x86-64.so.2"
-        shutil.copy(ld_src, ld_dst)
-        bins["ld"] = [str(ld_dst)]
-        return True
-    return False
+def run_command(cmd, args, cwd=None):
+    args = [cmd] + args
+    try:
+        proc = subprocess.run(args, capture_output=True, text=True, cwd=cwd)
+    except Exception as exception:
+        return "", str(exception)
+    return proc.stdout, proc.stderr
 
 
-def patchelf(bins: dict, path: Path):
+def fetch_libs(bins: dict) -> bool:
+    if not bins["libc"]:
+        return False
+
+    libc = bins["libc"][0]
+    blacklist = set(
+        os.path.basename(l) for l in bins["libs"] + bins["ld"] + bins["libc"]
+    )
+
+    lib_path = libcdb.download_libraries(libc)
+    if lib_path is None:
+        log.error("libcdb couldn't find libraries for this libc")
+        return False
+
+    lib_path = Path(lib_path)
+
     chall = bins["challs"][0]
-    os.system("patchelf --set-rpath %s %s" % (path, chall))
-    os.system("patchelf --set-interpreter %s %s" % (os.path.basename(bins["ld"][0]), chall))
+    ldd_out, _ = run_command("ldd", [chall])
+    needed = set(os.path.basename(p) for p in parse_ldd_output(ldd_out) if 'libc.so.6' not in p)
+    need_ld = not bins["ld"]
+
+    ld_fetched = False
+    for f in lib_path.iterdir():
+        if not f.is_file():
+            continue
+
+        if f.name in blacklist and 'libc.so.6' not in f.name:
+            log.info(f"skipping {f.name} (already present)")
+            continue
+
+        is_ld = "ld-linux" in f.name or f.name.startswith("ld-")
+
+        if f.name not in needed and not (is_ld and need_ld):
+            continue
+
+        if ld_fetched and is_ld:
+            continue
+
+        dst = Path(".") / f.name
+        shutil.copy(f, dst)
+        os.chmod(dst, 0o755)
+        log.success(f"fetched {f.name}")
+
+        if is_ld:
+            ld_fetched = True
+            bins["ld"].append(str(dst))
+        else:
+            bins["libs"].append(str(dst))
+
+    return bool(bins["ld"])
+
+
+def patch_elf(bins: dict):
+    chall = bins["challs"][0]
+
+    run_command("patchelf", ["--force-rpath", "--set-rpath", ".", chall])
+    run_command(
+        "patchelf",
+        ["--set-interpreter", os.path.basename(bins["ld"][0]), chall],
+    )
 
 
 def open_file(path: Path):
@@ -199,8 +263,10 @@ def open_file(path: Path):
             return None
     return open(path, "w")
 
+
 def relpath(files, type):
     return "./" + os.path.basename(files[type][0]) if files.get(type) else None
+
 
 def patch_run(path: str) -> int:
     with open(path, "r") as f:
@@ -221,7 +287,7 @@ def patch_run(path: str) -> int:
         if not lines[i].rstrip().endswith("\\"):
             break
 
-    cmd_lines = [l.rstrip("\n") for l in lines[start:end + 1]]
+    cmd_lines = [l.rstrip("\n") for l in lines[start : end + 1]]
 
     if any('"$@"' in l for l in cmd_lines):
         return 1
@@ -240,12 +306,13 @@ def patch_run(path: str) -> int:
 
     cmd_lines.append(f'{indent}"$@"')
 
-    result = lines[:start] + [l + "\n" for l in cmd_lines] + lines[end + 1:]
+    result = lines[:start] + [l + "\n" for l in cmd_lines] + lines[end + 1 :]
 
     with open(path, "w") as f:
         f.writelines(result)
 
     return 2
+
 
 def gen_files(path: Path, bins: dict) -> dict:
     templates = Path(os.path.dirname(os.path.realpath(__file__))) / "templates"
@@ -253,10 +320,12 @@ def gen_files(path: Path, bins: dict) -> dict:
     files = {}
 
     checksecs = []
-    for group in bins['elf'].values():
-        for f in (group or []):
+    for group in bins["elf"].values():
+        for f in group or []:
             try:
-                checksecs.append(f"[*] {f}\n" + ELF(f, checksec=False).checksec(color=False))
+                checksecs.append(
+                    f"[*] {f}\n" + ELF(f, checksec=False).checksec(color=False)
+                )
             except Exception as e:
                 pass
     checksecs_str = "\n\n".join(checksecs)
@@ -265,20 +334,20 @@ def gen_files(path: Path, bins: dict) -> dict:
     kernel = relpath(bins, "kernel")
     qemu = None
     if archive or kernel:
-        QEMU_DEFAULT.append('-kernel')
+        QEMU_DEFAULT.append("-kernel")
         QEMU_DEFAULT.append(relpath(files, "kernel"))
-        QEMU_DEFAULT.append('-initrd')
+        QEMU_DEFAULT.append("-initrd")
         QEMU_DEFAULT.append(relpath(files, "archive"))
         qemu = QEMU_DEFAULT
 
         for f in bins["shell"]:
             ret = patch_run(f)
-            if ret==1:
-                log.info(f'already patched {f}')
+            if ret == 1:
+                log.info(f"already patched {f}")
                 qemu = [f]
 
-            if ret==2:
-                log.success(f'patched {f}')
+            if ret == 2:
+                log.success(f"patched {f}")
                 qemu = [f]
 
     files["exploit.py"] = Template(filename=str(templates / "exploit.py")).render(
@@ -286,23 +355,23 @@ def gen_files(path: Path, bins: dict) -> dict:
         libc=relpath(bins["elf"], "libc"),
         archive=archive,
         kernel=kernel,
-        qemu=qemu
+        qemu=qemu,
     )
 
     files["notes.md"] = Template(filename=str(templates / "notes.md")).render(
-        chall=chall,
+        chall=os.path.basename(os.getcwd()),
         date=datetime.datetime.now().strftime("%d/%m/%Y"),
         checksecs=checksecs_str,
         author=config.get("author", "pwner", "PWNINIT_AUTHOR"),
     )
 
     if bins.get("kernel"):
-        kernel_module = relpath(bins['elf'], 'challs')
+        kernel_module = relpath(bins["elf"], "challs")
         if kernel_module:
-            kernel_module = kernel_module.split('.ko')[0][2:]
+            kernel_module = kernel_module.split(".ko")[0][2:]
 
         files["exploit.c"] = Template(filename=str(templates / "exploit.c")).render(
-            kernel_module = kernel_module
+            kernel_module=kernel_module
         )
         files["Makefile"] = Template(filename=str(templates / "Makefile")).render()
 
@@ -311,15 +380,23 @@ def gen_files(path: Path, bins: dict) -> dict:
 
 def setup_libc_ld(bins: dict, path: Path) -> bool:
     sorted_bins = bins["elf"]
-    if sorted_bins["libc"] and not sorted_bins["ld"]:
-        log.info("Attempting to fetch ld for libc...")
-        if not fetch_ld(sorted_bins, path):
-            log.error("Cannot fetch ld corresponding to libc")
-            return False
+    p = log.progress("fetching libs")
+
+    if not fetch_libs(sorted_bins):
+        p.failure("Cannot fetch libs")
+        return False
+    p.success("done")
 
     if sorted_bins["libc"] and sorted_bins["ld"]:
         try:
-            patchelf(sorted_bins, Path(os.path.abspath(path)))
+            patch_elf(sorted_bins)
+            p = log.progress("unstriping libs")
+            log_level = context.log_level
+            context.log_level = "error"
+            for l in sorted_bins["libc"] + sorted_bins["libs"]:
+                libcdb.unstrip_libc(l)
+            context.log_level = log_level
+            p.success("done")
             log.success("Patched binary with libc and ld")
         except Exception as e:
             log.error("Error patching binary: %s" % e)
@@ -359,7 +436,9 @@ def split_argv(argv=None):
             while i < len(argv) and argv[i] not in TOP_FLAGS:
                 plugin_args.append(argv[i])
                 i += 1
-            (provider if flag in ("-p", "--provider") else setup).append((name, plugin_args))
+            (provider if flag in ("-p", "--provider") else setup).append(
+                (name, plugin_args)
+            )
         else:
             top_args.append(argv[i])
             i += 1
@@ -368,8 +447,15 @@ def split_argv(argv=None):
 
 
 def parse_top_args(top_args):
-    parser = argparse.ArgumentParser(description="pwninit - CTF binary exploitation setup tool")
-    parser.add_argument("--list-plugins", "-l", action="store_true", help="list all available plugins")
+    parser = argparse.ArgumentParser(
+        description="pwninit - CTF binary exploitation setup tool"
+    )
+    parser.add_argument(
+        "--list-plugins",
+        "-l",
+        action="store_true",
+        help="list all available plugins",
+    )
     parser.add_argument("--provider", "-p")
     parser.add_argument("--setup", "-s")
     return parser.parse_args(top_args)
@@ -408,7 +494,7 @@ def cli() -> int:
 
     sorted_bins = process_binaries(path)
     if sorted_bins:
-        if (path / 'Dockerfile').exists():
+        if (path / "Dockerfile").exists():
             name = path.resolve().name
             image_tag = f"pwninit-{name}:latest".lower()
             try:
@@ -419,7 +505,7 @@ def cli() -> int:
                     capture_output=True,
                     env={**os.environ, "DOCKER_BUILDKIT": "1"},
                 )
-                log.success('Built docker image')
+                log.success("Built docker image")
             except subprocess.CalledProcessError as e:
                 log.warning(f"Build failed: {e.stderr.decode()}")
                 raise

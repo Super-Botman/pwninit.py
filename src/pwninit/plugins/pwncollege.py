@@ -21,19 +21,22 @@ class Plugin(Plugin):
 
         try:
             context.log_level = "error"
-            stdout, _ = s.run_to_end('ls -1 /challenge')
-            files = stdout.decode().strip().split('\n')
+            stdout, _ = s.run_to_end("ls -1 /challenge")
+            files = stdout.decode().strip().split("\n")
             for f in files:
                 if f != "":
                     status = log.progress(f"downloading {f}")
                     s.download_file("/challenge/" + f, os.path.basename(f))
                     status.success("done")
 
-            libs = s.system(f'ldd %s' % "/challenge/" + files[0]).recvall()
+            libs = s.system(f"ldd %s" % "/challenge/" + files[0]).recvall()
             libs = libs.decode().replace("\t", "").split("\n")[:-1]
             libs = [l.split(" => ")[-1].split(" ")[0] for l in libs]
             for l in libs:
-                if "No such file or directory" not in s.system("ls % s" % l).recvall().decode().strip():
+                if (
+                    "No such file or directory"
+                    not in s.system("ls % s" % l).recvall().decode().strip()
+                ):
                     s.download_file(l, os.path.basename(l))
 
             context.log_level = "info"

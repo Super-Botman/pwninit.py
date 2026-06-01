@@ -30,6 +30,7 @@ def decompress(data: bytes, mime: str) -> bytes:
         case _:
             return data
 
+
 def recompress(data: bytes, mime: str) -> bytes:
     match mime:
         case "application/gzip" | "application/x-gzip":
@@ -45,18 +46,24 @@ def recompress(data: bytes, mime: str) -> bytes:
         case _:
             return data
 
+
 def inject(image: str, exploit: str, dest: str = "./") -> bool:
     path = Path(image)
     exploit_path = Path(exploit)
     mime = magic.from_file(image, mime=True)
-    
+
     # --- disk image (raw, qcow2, vmdk...) ---
-    if mime in ("application/octet-stream",) or path.suffix in (".img", ".qcow2", ".vmdk", ".vdi"):
+    if mime in ("application/octet-stream",) or path.suffix in (
+        ".img",
+        ".qcow2",
+        ".vmdk",
+        ".vdi",
+    ):
         log.success("Detected disk image, using guestfish")
-        subprocess.run([
-            "guestfish", "-a", image, "-m", "/dev/sda1",
-            "copy-in", exploit, dest
-        ], check=True)
+        subprocess.run(
+            ["guestfish", "-a", image, "-m", "/dev/sda1", "copy-in", exploit, dest],
+            check=True,
+        )
         return True
 
     # --- squashfs ---
@@ -72,10 +79,10 @@ def inject(image: str, exploit: str, dest: str = "./") -> bool:
     # --- ext2/ext4 ---
     if mime in ("application/x-ext2", "application/x-ext4"):
         log.succcess("Detected ext image, using guestfish")
-        subprocess.run([
-            "guestfish", "-a", image, "-m", "/dev/sda",
-            "copy-in", exploit, dest
-        ], check=True)
+        subprocess.run(
+            ["guestfish", "-a", image, "-m", "/dev/sda", "copy-in", exploit, dest],
+            check=True,
+        )
         return True
 
     # --- compressed or raw cpio (initramfs) ---

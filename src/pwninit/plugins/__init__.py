@@ -8,14 +8,18 @@ from pathlib import Path
 
 PLUGIN_DIR = Path.home() / ".config" / "pwninit" / "plugins"
 
+
 class Plugin:
     name = None
     description = ""
     provide_args = []
     setup_args = []
 
-    def provide(self, args, path): raise NotImplementedError
-    def setup(self, args, bins): raise NotImplementedError
+    def provide(self, args, path):
+        raise NotImplementedError
+
+    def setup(self, args, bins):
+        raise NotImplementedError
 
     @property
     def has_provide(self):
@@ -25,8 +29,10 @@ class Plugin:
     def has_setup(self):
         return type(self).setup is not Plugin.setup
 
+
 def arg(name, **kwargs):
     return {"name": name, **kwargs}
+
 
 def _load_plugin(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -40,6 +46,7 @@ def _load_plugin(name, path):
         log.warning("Failed to load plugin %s: %s" % (path, e))
         return None
     return mod
+
 
 def _resolve(name):
     plugin = PLUGIN_DIR / f"{name}.py"
@@ -55,6 +62,7 @@ def _resolve(name):
         pass
 
     return None
+
 
 def _parse_plugin_args(plugin, raw_args, role):
     arg_list = plugin.provide_args if role == "provide" else plugin.setup_args
@@ -96,6 +104,7 @@ def run_plugins(args, role, settings):
         log.error("Plugin '%s' has no %s()" % (args[0], role))
         return None
 
+
 def _get_infos(dir, source="built-in"):
     seen = {}
     for f in sorted(dir.glob("*.py")):
@@ -116,6 +125,7 @@ def _get_infos(dir, source="built-in"):
         seen[name] = plugin, roles, source
     return seen
 
+
 def _list_plugins():
     seen = {}
 
@@ -128,6 +138,7 @@ def _list_plugins():
         seen.update(_get_infos(PLUGIN_DIR, "external"))
 
     return seen
+
 
 def _format_arg(a):
     a = dict(a)
@@ -144,6 +155,7 @@ def _format_arg(a):
     if help_text:
         parts += " - %s" % help_text
     return parts
+
 
 def _build_parser(plugin, role):
     arg_list = plugin.provide_args if role == "provide" else plugin.setup_args
@@ -162,6 +174,7 @@ def _build_parser(plugin, role):
         parser.add_argument(*names, **a)
     return parser
 
+
 def _format_arg(a):
     a = dict(a)
     name = a.get("name", "?")
@@ -176,6 +189,7 @@ def _format_arg(a):
     if default is not None:
         parts += " (default: %s)" % default
     return parts
+
 
 def print_plugin_list():
     plugins = _list_plugins()

@@ -16,21 +16,26 @@ def validate_url(url):
     if not url or not isinstance(url, str):
         raise ValueError("URL must be a non-empty string")
     parsed = urlparse(url)
-    if parsed.netloc not in ['www.root-me.org', 'root-me.org']:
+    if parsed.netloc not in ["www.root-me.org", "root-me.org"]:
         raise ValueError("URL must be from root-me.org")
-    if '/Challenges/' not in parsed.path:
+    if "/Challenges/" not in parsed.path:
         raise ValueError("URL must be a root-me challenge URL")
 
 
 def extract_ssh_credentials(html_content):
-    ssh_pattern = r'ssh\s+([^\s@]+)@([^\s:]+):(\d+)'
+    ssh_pattern = r"ssh\s+([^\s@]+)@([^\s:]+):(\d+)"
     match = re.search(ssh_pattern, html_content)
     if not match:
         try:
-            login_data = html_content.split('ssh')[1].split(
-                ' ')[0].replace('//', '').replace('"', '').split(':')[1:]
+            login_data = (
+                html_content.split("ssh")[1]
+                .split(" ")[0]
+                .replace("//", "")
+                .replace('"', "")
+                .split(":")[1:]
+            )
             password = login_data[0]
-            host = login_data[1].split('@')[1]
+            host = login_data[1].split("@")[1]
             port = int(login_data[2])
             return password, host, port
         except (IndexError, ValueError) as e:
@@ -46,16 +51,17 @@ def solve_anubis_challenge(session, url):
 
     preact_match = re.search(
         r'<script id="preact_info" type="application/json">(.+?)</script>',
-        response.text, re.DOTALL
+        response.text,
+        re.DOTALL,
     )
     if not preact_match:
         progress.success("No challenge found (already bypassed)")
         return response
 
     preact_data = json.loads(preact_match.group(1))
-    challenge_string = preact_data['challenge']
-    difficulty = preact_data['difficulty']
-    redir_url = preact_data['redir']
+    challenge_string = preact_data["challenge"]
+    difficulty = preact_data["difficulty"]
+    redir_url = preact_data["redir"]
 
     progress.status("Computing hash...")
     result = hashlib.sha256(challenge_string.encode()).hexdigest()
@@ -66,11 +72,13 @@ def solve_anubis_challenge(session, url):
 
     parsed_original = urlparse(response.url)
     base = f"{parsed_original.scheme}://{parsed_original.netloc}"
-    pass_url = urljoin(base, redir_url) if not redir_url.startswith('http') else redir_url
+    pass_url = (
+        urljoin(base, redir_url) if not redir_url.startswith("http") else redir_url
+    )
 
     parsed = urlparse(pass_url)
     params = parse_qs(parsed.query)
-    params['result'] = [result]
+    params["result"] = [result]
     new_query = urlencode(params, doseq=True)
     pass_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{new_query}"
 
@@ -81,7 +89,7 @@ def solve_anubis_challenge(session, url):
         progress.success("Challenge bypassed!")
     else:
         progress.failure("Challenge failed")
-        error_match = re.search(r'<p>(.+?)</p>', final_response.text)
+        error_match = re.search(r"<p>(.+?)</p>", final_response.text)
         if error_match:
             log.error(f"Server response: {error_match.group(1)}")
 
@@ -93,8 +101,15 @@ class Plugin(Plugin):
     description = "Fetch challenge binary and libs from root-me.org via SSH"
     provide_args = [
         arg("url", help="Root-me challenge URL"),
-        arg("--api-key", help="Override root-me API key (default: from config)", default=None),
-        arg("--path", help="Relative path of storage for the chall files (default: categorie/name)")
+        arg(
+            "--api-key",
+            help="Override root-me API key (default: from config)",
+            default=None,
+        ),
+        arg(
+            "--path",
+            help="Relative path of storage for the chall files (default: categorie/name)",
+        ),
     ]
 
     def provide(self, args, path):
@@ -102,23 +117,28 @@ class Plugin(Plugin):
         validate_url(url)
 
         session = requests.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-        })
+        session.headers.update(
+            {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Connection": "keep-alive",
+            }
+        )
 
         try:
-            api_key = args.api_key or config.get('rootme_api_key', env_var='ROOTME_API_KEY')
+            api_key = args.api_key or config.get(
+                "rootme_api_key", env_var="ROOTME_API_KEY"
+            )
         except ValueError as e:
             log.error(str(e))
 
         cookies = {"api_key": api_key}
         try:
             resp = session.get(
-                "https://api.www.root-me.org/login", cookies=cookies, timeout=30)
+                "https://api.www.root-me.org/login", cookies=cookies, timeout=30
+            )
             resp.raise_for_status()
         except requests.exceptions.RequestException as e:
             log.error(f"Failed to authenticate with root-me API: {e}")
@@ -130,29 +150,37 @@ class Plugin(Plugin):
 
         try:
             password, host, port = extract_ssh_credentials(resp.text)
-            chall_name = password.split('-')[-1]
+            chall_name = password.split("-")[-1]
         except ValueError as e:
             log.error(str(e))
 
         context.log_level = "error"
         try:
-            s = ssh(host=host, port=port, user=password,
-                    password=password, timeout=10, cache=False)
+            s = ssh(
+                host=host,
+                port=port,
+                user=password,
+                password=password,
+                timeout=10,
+                cache=False,
+            )
         except Exception as e:
             log.error(f"Failed to establish SSH connection: {e}")
 
         if not s.connected():
             return ""
 
-        context.log_level = 'info'
+        context.log_level = "info"
         success("Connected to ssh")
         download = log.progress("Downloading files")
-        context.log_level = 'error'
+        context.log_level = "error"
 
-        name = url.split('/')[-1]
-        category = '-'.join(name.split('-')[:2])
-        chall_filename = '-'.join(name.split('-')[2:])
-        chall_path = path / category / chall_filename if not args.path else path / args.path
+        name = url.split("/")[-1]
+        category = "-".join(name.split("-")[:2])
+        chall_filename = "-".join(name.split("-")[2:])
+        chall_path = (
+            path / category / chall_filename if not args.path else path / args.path
+        )
 
         try:
             (path / category).mkdir(exist_ok=True)
@@ -161,22 +189,25 @@ class Plugin(Plugin):
             log.error(f"Failed to create directories: {e}")
 
         try:
-            files = s.run("ls -l").recvall().decode().split('\n')[1:-1]
+            files = s.run("ls -l").recvall().decode().split("\n")[1:-1]
             for f in files:
-                f = f.split(' ')[-1]
+                f = f.split(" ")[-1]
                 if f != "":
                     s.download(f, chall_path / os.path.basename(f))
-                    download.status(f'downloading {f}')
+                    download.status(f"downloading {f}")
 
-            libs = parse_ldd_output(s.system(f'ldd {chall_name}').recvall().decode())
+            libs = parse_ldd_output(s.system(f"ldd {chall_name}").recvall().decode())
             for l in libs:
-                if "No such file or directory" not in s.system("ls % s" % l).recvall().decode().strip():
+                if (
+                    "No such file or directory"
+                    not in s.system("ls % s" % l).recvall().decode().strip()
+                ):
                     s.download(l, chall_path / os.path.basename(l))
-                    download.status(f'downloading {l}')
+                    download.status(f"downloading {l}")
         except Exception as e:
             log.error(f"Failed to download files via SSH: {e}")
 
-        context.log_level = 'info'
+        context.log_level = "info"
         download.success("Files saved")
         s.close()
         return chall_path

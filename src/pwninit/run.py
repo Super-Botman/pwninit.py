@@ -12,7 +12,7 @@ from pwninit.farm import run_farm
 def addr_type(value):
     if "@" in value:
         creds, addr = value.split("@", 1)
-        user, password = creds.split(":", 1) if ":" in creds else (creds, '')
+        user, password = creds.split(":", 1) if ":" in creds else (creds, "")
         host, port = addr.split(":", 1) if ":" in addr else (addr, 22)
         return io.SSH(user, host, password, int(port))
     elif ":" in value:

@@ -57,7 +57,9 @@ class Plugin(Plugin):
             raise
 
         progress.status("Starting container")
-        container = client.containers.create(image_tag, command=["tail", "-f", "/dev/null"])
+        container = client.containers.create(
+            image_tag, command=["tail", "-f", "/dev/null"]
+        )
         container.start()
 
         progress.status("Locating libc")
@@ -84,8 +86,11 @@ class Plugin(Plugin):
         if not libc_path:
             progress.status("Searching filesystem for libc")
             result = container.exec_run(
-                ["sh", "-c",
-                 "find /lib /usr/lib /lib64 /usr/lib64 -name 'libc.so.6' 2>/dev/null | head -1"]
+                [
+                    "sh",
+                    "-c",
+                    "find /lib /usr/lib /lib64 /usr/lib64 -name 'libc.so.6' 2>/dev/null | head -1",
+                ]
             )
             if result.output and result.exit_code == 0:
                 libc_path = result.output.decode().strip()
