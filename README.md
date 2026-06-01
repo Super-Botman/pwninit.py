@@ -146,7 +146,7 @@ You can also use environment variables:
 
 ## Architecture
 
-![schema of the whole project architecture](./doc/pwninit.png)
+![schema of the whole project architecture](./img/pwninit.png)
 
 ## TODO
 

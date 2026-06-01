@@ -30,13 +30,10 @@ plugins:
           paths: [src] 
 
 nav:
-  # - Home: index.md
+  - Home: index.md
   - Pwninit:
-    - Core:
-      # - Configuration: api/config.md
-      - IO Operations: pwninit/io.md
-      - Plugins: pwninit/plugins.md
-      # - Kernel: api/kernel.md
-      - Helpers:
-        - Pwncontext: pwninit/helpers/pwncontext.md
-        - Utils: pwninit/helpers/utils.md
+    - IO Operations: pwninit/io.md
+    - Plugins: pwninit/plugins.md
+    - Helpers:
+      - Pwncontext: pwninit/helpers/pwncontext.md
+      - Utils: pwninit/helpers/utils.md
