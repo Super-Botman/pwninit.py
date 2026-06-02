@@ -1,6 +1,7 @@
 import argparse
 import importlib.util
 import sys
+import re
 
 from pwn import ELF, context, log
 
@@ -8,27 +9,22 @@ import pwninit.helpers.pwncontext as helpers
 import pwninit.io as io
 from pwninit.farm import run_farm
 
+_NC_RE  = re.compile(r'^(?P<host>[^:@]*):(?P<port>\d+)$')
+_SSH_RE = re.compile(r'^(?P<user>[^:@]+)(?::(?P<password>[^@]*))?@(?P<host>[^:]+)(?::(?P<port>[^:]+))?(?::(?P<path>.+))?$')
+
 def addr_type(value: str) -> io.SSH | io.NC:
-    if "@" in value:
-        creds, uri = value.split("@", 1)
-        user, password, *_ = creds.split(":") + [None]
-        host, port, path, *_ = uri.split(":") + [None, None]
-
-        port_set = (port and port.isdigit())
-
-        path = port if port and not port.isdigit() else path
+    if m := _SSH_RE.match(value):
+        port = m.group("port")
+        path = m.group("path") or (port if port and not port.isdigit() else None)
         port = int(port) if port and port.isdigit() else 22
+        return io.SSH(m.group("user"), m.group("host"), m.group("password") or None, port, path)
 
-        return io.SSH(user, host, password, port, path)
+    if m := _NC_RE.match(value):
+        return io.NC(m.group("host") or "localhost", int(m.group("port")))
 
-    elif ":" in value:
-        host, port = value.split(":", 1)
-        return io.NC(host or "localhost", int(port))
-
-    else:
-        raise argparse.ArgumentTypeError(
-            "Invalid format. Expected 'ip:port', 'user@ip:port', 'user@ip:/path', or 'user:pass@ip:port:/path'."
-        )
+    raise argparse.ArgumentTypeError(
+        "Invalid format. Expected 'ip:port', 'user@ip:port', 'user@ip:/path', or 'user:pass@ip:port:/path'."
+    )
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Runner for pwn exploits.")
@@ -156,7 +152,7 @@ def cli() -> int:
         return 1
     io.set_ctx(ctx)
 
-    ctx = helpers.PwnContext(io.ioctx, context.binary, libc, config.prefix)
+    ctx = helpers.PwnContext(io.ioctx, context.binary, libc, config.libs, config.prefix)
     helpers.set_ctx(ctx)
 
     exploit(helpers.pwnctx, io.ioctx)

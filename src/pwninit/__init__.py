@@ -14,6 +14,7 @@ class Config(SimpleNamespace):
         self,
         binary=None,
         libc=None,
+        libs=[],
         chall=None,
         env={},
         archive=None,
@@ -27,6 +28,7 @@ class Config(SimpleNamespace):
         super().__init__(
             binary=binary,
             libc=libc,
+            libs=libs,
             chall=chall,
             env=env,
             archive=archive,

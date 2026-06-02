@@ -1,10 +1,11 @@
 import math
 import re
+import os
 
-from pwn import ROP, asm, context, cyclic, cyclic_find, log, shellcraft, flat
+from pwn import ELF, ROP, asm, context, cyclic, cyclic_find, log, shellcraft, flat
 from pwnlib.rop.gadgets import Gadget
 
-from pwninit.helpers.utils import u64, upack
+from pwninit.helpers.utils import u64, upack, encode
 from pwninit.helpers.constants import *
 
 class PwnContext:
@@ -20,10 +21,11 @@ class PwnContext:
         _canary (int): Cached canary value.
     """
 
-    def __init__(self, io, elf, libc, prefix=None):
+    def __init__(self, io, elf, libc, libs=[], prefix=None):
         self.io = io
         self.elf = elf
         self.libc = libc
+        self.libs = [ELF(l) for l in libs]
         self.prefix = prefix
         self._offset = None
         self._canary = None
@@ -35,21 +37,19 @@ class PwnContext:
         Returns:
             int: The canary value, or None if not found.
         """
-        if not self._canary and self.io and self.io.proc and self.elf.canary:
-            canary = 0x0
-            auxv = open(f"/proc/{self.io.proc.pid}/auxv", "rb").read()
-            word = context.bytes
-            for i in range(0, len(auxv), 2 * word):
-                a_type = u64(auxv[i : i + word].ljust(8, b"\x00"))
-                a_val = u64(auxv[i + word : i + 2 * word].ljust(8, b"\x00"))
-                if a_type == 25:  # AT_RANDOM
-                    canary = u64(
-                        (b"\x00" + self.io.proc.readmem(a_val + 1, 7)).ljust(
-                            8, b"\x00"
-                        )
-                    )
-                    break
-            self._canary = canary
+        if self._canary: return self._canary
+        if not self.elf.canary: log.warn("no canary in this binary"); return self._canary
+        if not self.io.proc: log.warn("impossible to retrieve canary without local proc"); return self._canary
+
+        auxv = open(f"/proc/{self.io.proc.pid}/auxv", "rb").read()
+        word = context.bytes
+        for i in range(0, len(auxv), 2 * word):
+            a_type = u64(auxv[i : i + word])
+            a_val = u64(auxv[i + word : i + 2 * word])
+            if a_type == 25:  # AT_RANDOM
+                self.canary = u64((b"\x00" + self.io.proc.readmem(a_val + 1, 7)))
+                break
+
         return self._canary
 
     @canary.setter
@@ -64,14 +64,15 @@ class PwnContext:
         Returns:
             int: The offset value.
         """
-        if not self._offset:
-            context.delete_corefiles = True
-            if hasattr(self.io, "sendline"):
-                self.io.sendline(cyclic(1000))
-            self.io.poll(block=True)
-            core = self.io.corefile
-            self._offset = cyclic_find(core.fault_addr)
-            log.info(f"offset: {self._offset}")
+        if self._offset: return self._offset
+
+        context.delete_corefiles = True
+        if hasattr(self.io, "sendline"):
+            self.io.sendline(cyclic(1000))
+        self.io.poll(block=True)
+        core = self.io.corefile
+        self._offset = cyclic_find(core.fault_addr)
+        log.info(f"offset found: {self._offset}")
         return self._offset
 
     @offset.setter
@@ -109,16 +110,65 @@ class PwnContext:
         if isinstance(symbol, int):
             return symbol
 
-        for b in (self.libc, self.elf):
+        for b in [self.libc, self.elf] + self.libs:
             try:
-                addr = self.__find_sym(symbol, b)
-                if addr is not None:
-                    return addr
-            except Exception:
-                continue
-        return None
+                return self.__find_sym(symbol, b)
+            except KeyError:
+                pass
 
-    def leak(self, leak_data, leaked=0, name=""):
+    def check_leak(self, leaked: int) -> tuple:
+        """
+        Check if a leaked value corresponds to a known memory region (e.g., libc, elf, canary).
+
+        Args:
+            leak (int): The leaked value.
+
+        Returns:
+            tuple: (name, base) where `name` is the region name and `base` is the base address.
+        """
+        if not self.io or not self.io.proc:
+            return None, None
+
+        if self.canary and hex(leaked) in hex(self.canary):
+            return "canary", self.canary
+
+        libs = self.io.libs()
+        for m in self.io.maps():
+            if not (m.start <= leaked <= m.end):
+                continue
+
+            name = os.path.basename(m.path[1:-1] if '[' in m.path else m.path).partition(".")[0]
+            base = m.address 
+            if m.path in libs:
+                base = libs[m.path]
+            return name, base
+
+        return None, None
+
+
+    def find_leak(self, buf:int|str|bytes) -> int:
+        if isinstance(buf, int):
+            return buf
+
+        buf = encode(buf)
+        if m := re.search(rb"0x[0-9a-fA-F]+", buf):
+            leak_val = int(m.group(), 16)
+        elif len(buf) <= 8:
+            leak_val = upack(buf)
+        else:
+            buf = buf.rstrip(b"\n")
+            for i in range(len(buf)):
+                for j in range(6, 8):
+                    l_val = upack(buf[i : i + j])
+                    name, _ = self.check_leak(l_val)
+                    if name:
+                        log.info(f"[{name}]: leak[{i}:{i + j}]")
+            log.warn("cannot find leak, try another way")
+            exit(0) # early exit, we don't need to continue
+
+        return leak_val
+
+    def leak(self, leaked:int|str|bytes, offset=0, name=""):
         """
         Parse and log a memory leak, optionally assigning it to a context variable.
 
@@ -138,104 +188,22 @@ class PwnContext:
             >> print(hex(stack))
             0x7ffc710958d0
         """
-        start = leak_data.find(b"0x")
         base = 0
-
-        if start >= 0:
-            leak_data = leak_data[start:]
-            end = 2
-            for i in leak_data[2:]:
-                try:
-                    int(chr(i), 16)
-                    end += 1
-                except ValueError:
-                    break
-            leak_val = int(leak_data[:end], 16)
-        else:
-            if len(leak_data) <= 8:
-                leak_val = upack(leak_data)
-            else:
-                if leak_data[-1] == 0xA:
-                    leak_data = leak_data[:-1]
-
-                for i in range(len(leak_data)):
-                    for j in range(6, 8):
-                        l_val = upack(leak_data[i : i + j])
-                        found_name, found_base = self.check_leaks(l_val)
-                        if found_name:
-                            log.info(
-                                f"{found_name} found at leak[{i}:{i + j}]"
-                            )
-                            break
-                else:
-                    log.warn("cannot find leak, try another way")
-                    exit(0)
-                return
-
-        leak_val -= leaked
+        leaked = self.find_leak(leaked) - offset
 
         if not name:
-            name, base = self.check_leaks(leak_val)
+            name, base = self.check_leak(leaked)
 
-        if base == 0:
-            base = leak_val
-
-        var = getattr(self, name, False)
-        if var:
-            if type(getattr(var, "address", False)) is int:
-                var.address = base
-            else:
-                setattr(self, name, base)
-
-        if base > 0 and leak_val != base:
-            log.info(
-                f"{name}: leak = {leak_val:#x}, base = {base:#x}, diff = {leak_val - base}"
-            )
+        if base > 0 and leaked != base and name!='stack':
+            log.info(f"[{name}]: leak = {leaked:#x}, base = {base:#x}, offset = {leaked - base}")
         elif name:
-            log.info(f"{name}: leak = {leak_val:#x}")
+            log.info(f"[{name}]: {leaked:#x}")
         elif not self.io:
-            log.info(f"leak = {leak_val:#x}")
+            log.info(f"leak = {leaked:#x}")
         else:
             log.warn("no leak found")
 
-        return leak_val
-
-    def check_leaks(self, leak_val):
-        """
-        Check if a leaked value corresponds to a known memory region (e.g., libc, elf, canary).
-
-        Args:
-            leak (int): The leaked value.
-
-        Returns:
-            tuple: (name, base) where `name` is the region name and `base` is the base address.
-        """
-        base = 0
-        name = ""
-
-        if not self.io or not self.io.proc:
-            return name, base
-
-        if self.canary and hex(leak_val) in hex(self.canary):
-            return "canary", self.canary
-
-        for m in self.io.proc.maps():
-            if m.start <= leak_val <= m.end:
-                if self.elf and self.elf.path == m.path:
-                    name = "elf"
-                    base = self.io.proc.elf_mapping().address
-                elif self.libc and self.libc.path == m.path:
-                    name = "libc"
-                    base = self.io.proc.libc_mapping().address
-                else:
-                    name = m.path.strip("/")
-                    if hasattr(self.io.proc, f"{name}_mapping"):
-                        base = getattr(
-                            self.io.proc, f"{name}_mapping"
-                        )().address
-                return name, base
-
-        return name, base
+        return leaked
 
     def ropchain(self, chain, ret=True):
         """
@@ -261,6 +229,7 @@ class PwnContext:
         elfs = []
         if self.elf and (not self.elf.pie or self.elf.address):
             elfs.append(self.elf)
+
         if self.libc and (not self.libc.aslr or self.libc.address):
             elfs.append(self.libc)
 
@@ -272,15 +241,18 @@ class PwnContext:
             if isinstance(func, str) and "+" in func:
                 f, off = func.split("+")
                 func = self.resolve(f) + int(off)
+
             if not isinstance(params, dict):
                 rop.call(func, params)
-            else:
-                for value, gadget in rop.setRegisters(params):
-                    if isinstance(gadget, Gadget):
-                        rop.raw(gadget)
-                    else:
-                        rop.raw(value)
-                rop.call(func)
+                continue
+
+            for value, gadget in rop.setRegisters(params):
+                if isinstance(gadget, Gadget):
+                    rop.raw(gadget)
+                else:
+                    rop.raw(value)
+
+            rop.call(func)
 
         rop.raw(rop.ret.address)
         log.info(f"ROP :\n{rop.dump()}")
@@ -392,8 +364,7 @@ class PwnContext:
             bytes: The generated payload.
         """
         system = self.libc.sym["system"]
-        bin_sh = next(self.libc.search(b"/bin/sh\x00"))
-        payload = self.ropchain({system: [bin_sh]}, ret)
+        payload = self.ropchain({system: [self.binsh()]}, ret)
         return self.bof(payload, **kwargs)
 
     def ret2plt(self, func="puts", ret2main="main", ret=True, **kwargs):
@@ -508,16 +479,6 @@ def _ctx(name):
     wrapper.__name__ = name
     return wrapper
 
-
-def _ctx_prop(name):
-    def wrapper():
-        _require_ctx()
-        return getattr(pwnctx, name)
-
-    wrapper.__name__ = name
-    return wrapper
-
-
 leak = _ctx("leak")
 resolve = _ctx("resolve")
 check_leaks = _ctx("check_leaks")
@@ -530,6 +491,3 @@ ret2plt = _ctx("ret2plt")
 format_string = _ctx("format_string")
 fsopsh = _ctx("fsopsh")
 binsh = _ctx("binsh")
-
-offset = _ctx_prop("offset")
-canary = _ctx_prop("canary")

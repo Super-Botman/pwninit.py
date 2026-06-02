@@ -342,6 +342,7 @@ def gen_files(path: Path, bins: dict) -> dict:
     files["exploit.py"] = Template(filename=str(templates / "exploit.py")).render(
         binary=relpath(bins["elf"], "challs"),
         libc=relpath(bins["elf"], "libc"),
+        libs=["./"+os.path.basename(l) for l in bins["elf"]["libs"]],
         archive=archive,
         kernel=kernel,
         qemu=qemu,
@@ -357,7 +358,7 @@ def gen_files(path: Path, bins: dict) -> dict:
     if bins.get("kernel"):
         kernel_module = relpath(bins["elf"], "challs")
         if kernel_module:
-            kernel_module = kernel_module.split(".ko")[0][2:]
+            kernel_module = kernel_module.partition(".")[0][2:]
 
         files["exploit.c"] = Template(filename=str(templates / "exploit.c")).render(
             kernel_module=kernel_module
