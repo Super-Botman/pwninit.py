@@ -1,5 +1,6 @@
 import subprocess
 import time
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -42,7 +43,7 @@ class SSH:
     host: str
     password: str|None = None
     port: int = 22
-    path: str = "."
+    path: str|None = None
 
 
 class IOContext:
@@ -93,9 +94,17 @@ class IOContext:
 
     def __create_ssh_process(self) -> Any:
         if self.args.debug:
-            return gdb.debug(self.config.chall, ssh=self.ssh_conn, cwd=self.args.remote.path)
-        else:
-            return self.ssh_conn.process(self.config.chall, env=self.config.env, cwd=self.args.remote.path)
+            return gdb.debug(
+                self.config.chall,
+                ssh=self.ssh_conn,
+                cwd=self.args.remote.path
+            )
+
+        return self.ssh_conn.process(
+            self.config.chall,
+            env=self.config.env,
+            cwd=self.args.remote.path
+        )
 
     def __create_kernel_process(self) -> Any:
         status = log.progress("compiling exploit")
@@ -159,49 +168,36 @@ class IOContext:
         container = next((c for c in client.containers.list() if c.image.tags[-1] == image_tag), None)
 
         if not container:
-            try:
-                container = client.containers.run(
-                    image_tag,
-                    pid_mode="host",
-                    ports={
-                        f"{self.args.remote.port}/tcp": self.args.remote.port
-                    },
-                    privileged=True,
-                    detach=True,
-                )
-            except docker.errors.APIError as e:
-                log.warning(f"Failed to launch docker: {e}")
-                exit(1)
+            container = client.containers.run(
+                image_tag,
+                pid_mode="host",
+                ports={
+                    f"{self.args.remote.port}/tcp": self.args.remote.port
+                },
+                privileged=True,
+                detach=True,
+            )
 
         return container
 
-    def __debug_docker(self, container: Any) -> None:
-        processes = container.top()
-        pid: int | None = None
-        bin: str | None = None
-
+    def __docker_get_bin_pid(self, top) -> int:
         if hasattr(self.config, "docker_bin"):
             bin = self.config.docker_bin
-        else:
-            for p in processes["Processes"]:
-                if self.config.binary in p[-1]:
-                    pid = int(p[1])
-                    break
-                if "socat" in p[-1]:
-                    bin = p[-1].split("exec:")[1].split(",")[0]
-                    break
 
-            if not bin and not pid:
-                log.warning(
-                    "No socat running nor binary — set docker_bin in Config"
-                )
-                exit(1)
+        for line in top["Processes"]:
+            _, pid, *_, cmd = line
 
-        if not pid:
-            for p in processes["Processes"]:
-                if bin in p[-1]:
-                    pid = int(p[1])
+            if self.config.binary in cmd:
+                return int(pid)
+            elif "socat" in cmd:
+                bin = re.search(r'(?i)exec:([^,\s]+)', cmd).group(1)
+            elif bin == cmd:
+                return int(pid)
 
+
+    def __debug_docker(self, container: Any) -> None:
+        processes = container.top()
+        pid = self.__docker_get_bin_pid(processes)
         if not pid:
             log.warning("Bin isn't running — check Dockerfile or bin name")
             exit(1)

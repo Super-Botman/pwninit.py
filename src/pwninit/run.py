@@ -11,18 +11,15 @@ from pwninit.farm import run_farm
 def addr_type(value: str) -> io.SSH | io.NC:
     if "@" in value:
         creds, uri = value.split("@", 1)
-        user, password, *_ = creds.split(":", 1) + [None]
+        user, password, *_ = creds.split(":") + [None]
         host, port, path, *_ = uri.split(":") + [None, None]
 
-        if path:
-            return io.SSH(user, host, password, int(port), path)
-        elif port and port.isdigit():
-            port = int(port)
-            return io.SSH(user, host, password, port)
-        elif port:
-            return io.SSH(user, host, password, path=port)
-        elif not port:
-            return io.SSH(user, host, password)
+        port_set = (port and port.isdigit())
+
+        path = port if port and not port.isdigit() else path
+        port = int(port) if port and port.isdigit() else 22
+
+        return io.SSH(user, host, password, port, path)
 
     elif ":" in value:
         host, port = value.split(":", 1)
@@ -163,4 +160,5 @@ def cli() -> int:
     helpers.set_ctx(ctx)
 
     exploit(helpers.pwnctx, io.ioctx)
+
     return 0
