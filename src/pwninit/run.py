@@ -141,6 +141,9 @@ def cli() -> int:
     if context.binary:
         libc = ELF(config.libc) if config.libc else context.binary.libc
 
+    if config.libs:
+        config.libs = [ELF(l) for l in config.libs]
+
     if args.farm:
         return run_farm(args, config, exploit)
 
@@ -152,7 +155,7 @@ def cli() -> int:
         return 1
     io.set_ctx(ctx)
 
-    ctx = helpers.PwnContext(io.ioctx, context.binary, libc, config.libs, config.prefix)
+    ctx = helpers.PwnContext(io.ioctx, config)
     helpers.set_ctx(ctx)
 
     exploit(helpers.pwnctx, io.ioctx)

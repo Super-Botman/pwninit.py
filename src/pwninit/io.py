@@ -1,3 +1,4 @@
+import argparse
 import subprocess
 import time
 import re
@@ -6,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import docker
-from pwn import context, gdb, log, pause, process, remote, ssh
+from pwn import context, gdb, log, pause, process, remote, ssh, pwnlib
 
 from pwninit.kernel import inject
 import pwninit.helpers.utils as utils
@@ -14,12 +15,11 @@ import pwninit.helpers.utils as utils
 
 @dataclass(frozen=True)
 class NC:
-    """
-    Dataclass for representing a network connection.
+    """Dataclass representing a network connection configuration.
 
     Attributes:
-        host (str): The host address.
-        port (int): The port number.
+        host (str): The target remote host domain or IP address.
+        port (int): The target remote network port number.
     """
 
     host: str
@@ -28,43 +28,43 @@ class NC:
 
 @dataclass(frozen=True)
 class SSH:
-    """
-    Dataclass for representing an SSH connection.
+    """Dataclass representing an SSH connection configuration.
 
     Attributes:
         user (str): The SSH username.
-        host (str): The host address.
-        password (str|None): The SSH password (default: None).
-        port (int): The SSH port (default: 22).
-        path (str): The SSH cwd (default: ".")
+        host (str): The target host address.
+        password (str | None): The SSH password credentials.
+        port (int): The target SSH daemon port (default: 22).
+        path (str | None): Explicit remote current working directory path.
     """
 
     user: str
     host: str
-    password: str|None = None
+    password: str | None = None
     port: int = 22
-    path: str|None = None
+    path: str | None = None
 
 
 class IOContext:
-    """
-    A context class for managing IO connections (local, remote, SSH, Docker, kernel).
+    """A context wrapper class managing multi-tier execution pipes spanning local
+
+    processes, network sockets, SSH sessions, Docker instances, or simulated kernels.
 
     Attributes:
-        args: CLI arguments for the connection.
-        config: Configuration for the target (e.g., binary path, environment).
-        ssh_conn: The SSH connection object.
-        conn: The active connection object (e.g., `process`, `remote`, `ssh`).
-        proc: The process object for local debugging.
+        args: Parsed command line execution arguments object.
+        config: Structured binary and operational workspace definitions.
+        ssh_conn: Active raw pwntools SSH context channel instance.
+        conn: Reference link pointing directly to active IO communication tube.
+        proc: Reference to local operating process instance when debugging.
     """
 
     def __init__(
         self,
-        args: Any,
+        args: argparse.Namespace,
         config: Any,
-        proc: Any | None = None,
-        conn: Any | None = None,
-        ssh_conn: Any | None = None,
+        proc: pwnlib.tubes.process.process | None = None,
+        conn: pwnlib.tubes.tube | None = None,
+        ssh_conn: pwnlib.tubes.ssh | None = None,
     ) -> None:
         self.args = args
         self.config = config
@@ -180,10 +180,10 @@ class IOContext:
 
         return container
 
-    def __docker_get_bin_pid(self, top) -> int:
-        bin = ''
+    def __docker_get_bin_pid(self, top: dict) -> int | None:
+        binary_name = ""
         if hasattr(self.config, "docker_bin"):
-            bin = self.config.docker_bin
+            binary_name = self.config.docker_bin
 
         for line in top["Processes"]:
             _, pid, *_, cmd = line
@@ -191,10 +191,12 @@ class IOContext:
             if self.config.binary in cmd:
                 return int(pid)
             elif "socat" in cmd:
-                bin = re.search(r'(?i)exec:([^,\s]+)', cmd).group(1)
-            elif bin == cmd:
+                match = re.search(r'(?i)exec:([^,\s]+)', cmd)
+                if match:
+                    binary_name = match.group(1)
+            elif binary_name == cmd:
                 return int(pid)
-
+        return None
 
     def __debug_docker(self, container: Any) -> None:
         processes = container.top()
@@ -206,6 +208,7 @@ class IOContext:
         gdb.attach(pid, exe=self.config.binary)
 
     def test_connection(self) -> bool:
+        """Verify the health of the connection pipe by probing available bytes."""
         try:
             buf = self.recv(timeout=2)
             self.unrecv(buf)
@@ -215,15 +218,13 @@ class IOContext:
             return False
 
     def connect(self, enable_log: bool = True) -> "IOContext | None":
-        """
-        Establish a connection based on the provided arguments and configuration.
+        """Establish connection bindings matching active environment arguments.
 
         Args:
-            enable_log (bool): If True, enable logging (default: True).
+            enable_log (bool): Output standard configuration status logging streams.
 
         Returns:
-            self: On success.
-            None: On failure.
+            IOContext | None: Active operational self reference or None if failed.
         """
         if not enable_log:
             log_level = context.log_level
@@ -267,26 +268,13 @@ class IOContext:
         return self
 
     def reconnect(self, enable_log: bool = True) -> "IOContext | None":
-        """
-        Close the current connection and reconnect.
-
-        Args:
-            enable_log (bool): If True, enable logging (default: True).
-
-        Returns:
-            IOContext | None: The reconnected context, or None on failure.
-        """
+        """Close active handles and re-run initialization structures."""
         if self.conn:
             self.close(enable_log)
         return self.connect(enable_log)
 
     def close(self, enable_log: bool = True) -> None:
-        """
-        Close the current connection.
-
-        Args:
-            enable_log (bool): If True, enable logging (default: True).
-        """
+        """Safely close active descriptor pipes and clear tracking variables."""
         if not self.conn:
             return
         if not enable_log:
@@ -298,13 +286,7 @@ class IOContext:
             context.log_level = log_level
 
     def prompt(self, data: str | bytes, **kwargs: Any) -> None:
-        """
-        Send data to the target, optionally waiting for a prefix.
-
-        Args:
-            data: The data to send.
-            **kwargs: Additional arguments for `send`/`sendline` (e.g., `prefix`, `line`).
-        """
+        """Transmit parameters downstream, adapting automatically to specific prefixes or line endings."""
         prefix = utils.encode(kwargs.pop("prefix", self.config.prefix))
         line = utils.encode(kwargs.pop("line", True))
         data = utils.encode(data)
@@ -320,63 +302,26 @@ class IOContext:
             r.send(data, **kwargs)
 
     def sla(self, *args: str | bytes, **kwargs: Any) -> None:
-        """
-        Send a line after a prefix (shorthand for `prompt` with `line=True`).
-
-        Args:
-            *args: If one argument, it is the data to send. If two, the first is the prefix and the second is the data.
-            **kwargs: Additional arguments for `prompt`.
-        """
+        """Send line after target prefix indicator."""
         if len(args) == 1:
             self.prompt(args[0], **kwargs)
         elif len(args) >= 2:
             self.prompt(args[1], prefix=args[0], **kwargs)
 
     def sa(self, *args: str | bytes, **kwargs: Any) -> None:
-        """
-        Send data after a prefix (shorthand for `prompt` with `line=False`).
-
-        Args:
-            *args: If one argument, it is the data to send. If two, the first is the prefix and the second is the data.
-            **kwargs: Additional arguments for `prompt`.
-        """
+        """Send raw data chunk after target prefix indicator."""
         self.sla(*args, line=False, **kwargs)
 
     def sl(self, data: str | bytes, **kwargs: Any) -> None:
-        """
-        Send a line without waiting for a prefix.
-
-        Args:
-            data: The data to send.
-            **kwargs: Additional arguments for `prompt`.
-        """
+        """Send data appended with trailing system line termination characters."""
         self.prompt(data, prefix=None, **kwargs)
 
     def send(self, data: str | bytes, **kwargs: Any) -> None:
-        """
-        Send data without waiting for a prefix or newline.
-
-        Args:
-            data: The data to send.
-            **kwargs: Additional arguments for `prompt`.
-        """
+        """Transmit raw payload blocks over the active data stream."""
         self.prompt(data, prefix=None, line=False, **kwargs)
 
-    def recv(
-        self,
-        prefix: str | bytes | int | None = None,
-        **kwargs: Any,
-    ) -> bytes:
-        """
-        Receive data from the target, optionally waiting for a prefix.
-
-        Args:
-            prefix: The prefix to wait for (bytes, str, or int for `recvn`).
-            **kwargs: Additional arguments for `recv`/`recvline`/`recvuntil`.
-
-        Returns:
-            bytes: The received data.
-        """
+    def recv(self, prefix: str | bytes | int | None = None, **kwargs: Any) -> bytes:
+        """Extract bytes back up from tracking pipelines matching constraints."""
         r = kwargs.pop("io", self.conn)
         line = kwargs.pop("line", False)
 
@@ -394,85 +339,49 @@ class IOContext:
             return r.recvuntil(prefix, drop=drop, **kwargs)
 
     def ru(self, u: str | bytes, **kwargs: Any) -> bytes:
-        """
-        Receive data until a specific string (shorthand for `recv` with `prefix`).
-
-        Args:
-            u: The string to wait for.
-            **kwargs: Additional arguments for `recv`.
-        """
+        """Extract buffer chunks up until a specified delimiter sequence."""
         return self.recv(u, **kwargs)
 
     def rl(self, **kwargs: Any) -> bytes:
-        """
-        Receive a line (shorthand for `recv` with `line=True`).
-
-        Returns:
-            bytes: The received line.
-        """
+        """Extract a single structured newline terminated string sequence."""
         return self.recv(line=True, **kwargs)
 
     def rla(self, d: str | bytes, **kwargs: Any) -> bytes:
-        """
-        Receive a line after a specific string (shorthand for `recv` with `prefix` and `line=True`).
-
-        Args:
-            d: The string to wait for.
-            **kwargs: Additional arguments for `recv`.
-        """
+        """Extract a complete newline bounded sequence string following an initial key token."""
         return self.recv(d, line=True, **kwargs)
 
     def ra(self) -> bytes:
-        """
-        Receive all remaining data.
-
-        Returns:
-            bytes: All remaining data.
-        """
-        return self.recvall()
+        """Drain all remaining communication bytes entirely from the active pipe."""
+        return self.conn.recvall()
 
     def itrv(self) -> Any:
-        """
-        Switch to interactive mode.
+        """Yield direct console access over descriptor channels back to the interactive shell."""
+        return self.conn.interactive()
 
-        Returns:
-            Any: The result of the interactive session.
-        """
-        return self.interactive()
-
-    def urecv(self) -> bytes:
-        """
-        Undo the last receive operation.
-
-        Returns:
-            bytes: The data that was un-received.
-        """
-        return self.unrecv()
+    def urecv(self, *args: Any, **kwargs: Any) -> bytes:
+        """Push target chunks back down into the pipeline buffer storage array."""
+        return self.conn.unrecv(*args, **kwargs)
 
     def rln(self, n: int, **kwargs: Any) -> list[bytes]:
-        """
-        Receive `n` lines.
-
-        Args:
-            n (int): The number of lines to receive.
-            **kwargs: Additional arguments for `recv`.
-
-        Returns:
-            list[bytes]: A list of received lines.
-        """
+        """Iteratively parse distinct newline chunks returning sequence listings."""
         return [self.rl(**kwargs) for _ in range(n)]
 
     def pow(self) -> None:
-        """
-        Solve any pows implemented in utils using what's been received.
-        """
-        utils.solve_pow(self.clean())
+        """Examine text contents currently available within pipes to isolate and process computational puzzles."""
+        utils.solve_pow(self.conn.clean())
 
 
 ioctx: IOContext | None = None
 
 
 def set_ctx(new_ctx: IOContext) -> None:
+    """Assign the global singleton instance context configuration.
+
+    Example:
+    
+        >>> ctx = IOContext(args, config)
+        >>> set_ctx(ctx)
+    """
     global ioctx
     ioctx = new_ctx
 
@@ -507,20 +416,20 @@ def connect(
     return io.connect()
 
 
-reconnect: Any = _ctx("reconnect")
-close: Any = _ctx("close")
-prompt: Any = _ctx("prompt")
-sla: Any = _ctx("sla")
-sa: Any = _ctx("sa")
-sl: Any = _ctx("sl")
-send: Any = _ctx("send")
-recv: Any = _ctx("recv")
-ru: Any = _ctx("ru")
-ra: Any = _ctx("ra")
-rl: Any = _ctx("rl")
-rla: Any = _ctx("rla")
-rln: Any = _ctx("rln")
-urecv: Any = _ctx("unrecv")
-clean: Any = _ctx("clean")
-itrv: Any = _ctx("interactive")
-pow: Any = _ctx("pow")
+reconnect = _ctx("reconnect")
+close = _ctx("close")
+prompt = _ctx("prompt")
+sla = _ctx("sla")
+sa = _ctx("sa")
+sl = _ctx("sl")
+send = _ctx("send")
+recv = _ctx("recv")
+ru = _ctx("ru")
+ra = _ctx("ra")
+rl = _ctx("rl")
+rla = _ctx("rla")
+rln = _ctx("rln")
+urecv = _ctx("urecv")
+clean = _ctx("clean")
+itrv = _ctx("itrv")
+pow = _ctx("pow")

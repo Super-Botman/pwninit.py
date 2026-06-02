@@ -12,14 +12,14 @@ config = None
 class Config(SimpleNamespace):
     def __init__(
         self,
-        binary=None,
-        libc=None,
-        libs=[],
-        chall=None,
-        env={},
-        archive=None,
-        kernel=None,
-        prefix=None,
+        binary:ELF,
+        libc:ELF,
+        libs:list=[],
+        chall:list|str=[],
+        env:dict={},
+        archive:str="",
+        kernel:str="",
+        prefix:str="",
         **kwargs,
     ):
         global config

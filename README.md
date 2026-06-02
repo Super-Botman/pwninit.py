@@ -151,3 +151,4 @@ You can also use environment variables:
 ## TODO
 
 - CTFd provider
+- add tests

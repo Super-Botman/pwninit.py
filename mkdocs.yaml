@@ -22,6 +22,16 @@ theme:
     - navigation.tabs
     - navigation.sections
 
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: bash
+          class: highlight
+
 plugins:
   - search
   - mkdocstrings:
@@ -30,10 +40,12 @@ plugins:
           paths: [src] 
 
 nav:
-  - Home: index.md
+  - Home:
+      - Introduction: index.md
+      - Plugins: plugins.md
   - Pwninit:
-    - IO Operations: pwninit/io.md
+    - Overwiew: pwninit/index.md
+    - IOContext: pwninit/io.md
+    - PwnContext: pwninit/pwncontext.md
     - Plugins: pwninit/plugins.md
-    - Helpers:
-      - Pwncontext: pwninit/helpers/pwncontext.md
-      - Utils: pwninit/helpers/utils.md
+    - Utils: pwninit/utils.md
