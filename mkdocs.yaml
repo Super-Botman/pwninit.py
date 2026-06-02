@@ -45,7 +45,8 @@ nav:
       - Plugins: plugins.md
   - Pwninit:
     - Overwiew: pwninit/index.md
-    - IOContext: pwninit/io.md
-    - PwnContext: pwninit/pwncontext.md
-    - Plugins: pwninit/plugins.md
-    - Utils: pwninit/utils.md
+    - API:
+      - IOContext: pwninit/io.md
+      - PwnContext: pwninit/pwncontext.md
+      - Plugins: pwninit/plugins.md
+      - Utils: pwninit/utils.md

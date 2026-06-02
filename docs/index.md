@@ -10,23 +10,32 @@ A comprehensive Python toolkit for CTF binary exploitation challenges that strea
 - **Template generation** - Creates exploit templates and documentation stubs
 - **Multi-target execution** - Supports local, remote, and SSH execution modes
 - **Debugging support** - Integrated GDB debugging with custom commands
-- **Provider system** - Extensible system for fetching challenges from various sources
+- **Provider system** - Extensible system for fetching challenges from various sources (Docker, RootMe, PwnCollege)
 - **Utility plugins** - Modular utilities for common exploitation tasks
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.10+
 - patchelf
 - GDB (for debugging)
+- Docker (for Docker provider)
 
 ### Install
 
 ```sh
-# Install with pipx
+# Install with pipx (recommended)
 pipx install git+https://github.com/Super-Botman/pwninit.py.git
+
+# Or install from source
+git clone https://github.com/Super-Botman/pwninit.py
+cd pwninit.py
+python3 -m build
+pip install dist/pwninit-0.0.1-py3-none-any.whl
 ```
+
+---
 
 ## Usage
 
@@ -38,23 +47,25 @@ Initialize a pwn challenge environment:
 # Basic usage - scan current directory for binaries
 pwninit
 
-# List Plugins
+# List available plugins
 pwninit -l
 
-# Fetch challenge from provider
+# Fetch challenge from a provider (e.g., RootMe)
 pwninit -p rootme https://www.root-me.org/fr/Challenges/App-Systeme/ELF-x86-Stack-buffer-overflow-basic-1
 
-# Fetch libc from docker provider
+# Fetch libc from Docker provider
 pwninit -p docker
 
-# Set args for providers
+# Set arguments for providers (e.g., Docker tag)
 pwninit -p docker -tag 'chall_name'
 ```
 
 **Options:**
 
-- `-p, --provider <provider>` - Set provider to run
+- `-p, --provider <provider>` - Set provider to run (e.g., `docker`, `rootme`, `pwncollege`)
 - `-s, --setup <utils>` - Comma-separated list of utilities to run
+
+---
 
 ### run - Exploit Execution
 
@@ -88,23 +99,26 @@ run -r target.com:443 --ssl
 
 **Options:**
 
-- `-r, --remote <addr>` - Remote connection (ip:port for nc, user:pass@ip:port for SSH)
+- `-r, --remote <addr>` - Remote connection (`ip:port` for nc, `user:pass@ip:port` for SSH)
 - `-d, --debug` - Launch with GDB debugger
-- `-s, --strace` - Run with strace, output saved to strace.out
-- `--gdb-command <cmd>` - Execute GDB command on startup (requires -d)
+- `-s, --strace` - Run with strace, output saved to `strace.out`
+- `--gdb-command <cmd>` - Execute GDB command on startup (requires `-d`)
 - `-v, --verbose` - Enable verbose logging
 - `--ssl` - Use SSL/TLS for remote connections
 
-### exploit.py - Exploits development
+---
 
-The full lib API doc can be seen at [pwninit.0xb0tm4n.org](https://pwninit.0xb0tm4n.org/pwninit)
+## exploit.py - Exploit Development
+
+The full library API documentation is available at [pwninit.0xb0tm4n.org](https://pwninit.0xb0tm4n.org/pwninit).
 
 ```py
 from pwninit import *
 
 Config(
-    binary = "./chall"
-    libc = "./lib.so.6"
+    binary="./chall",
+    libc="./libc.so.6",
+    ld="./ld-linux-x86-64.so.2"
 )
 
 def exploit(ctx: PwnContext, ioctx: IOContext):
@@ -112,33 +126,99 @@ def exploit(ctx: PwnContext, ioctx: IOContext):
     libc = ctx.libc
 
     # Example usage:
-    # sl(ret2win("win"))     # generate a ret2win payload and send it
-    # itrv()                 # go into interactive mode
+    # sl(ret2win("win"))     # Generate a ret2win payload and send it
+    # itrv()                 # Go into interactive mode
 
-    success("all good !")
+    success("All good!")
     itrv()
 ```
 
+---
+
 ## Generated Files
 
-pwninit creates the following files:
+`pwninit` automatically generates the following files in your working directory:
 
-- **exploit.py** - Main exploit template with binary and libc paths
-- **notes.md** - Documentation template with checksec output and metadata
-- **Patched binary** - Original binary patched with correct libc/linker
+- **exploit.py** - Main exploit template with pre-configured binary and libc paths
+- **exploit.c** - C exploit template for kernel exploitation
+- **notes.md** - Documentation template with checksec output, binary metadata, and exploit development notes
+- **Makefile** - Pre-configured Makefile for compiling exploits
+- **Patched binary** - Original binary patched with the correct libc/linker
 
-### Configuration
+---
 
-pwninit supports configuration through `~/.config/pwninit.conf`:
+## Configuration
+
+`pwninit` supports configuration through `~/.config/pwninit.conf`:
 
 ```ini
-author=YourName
+[default]
+author = YourName
+provider = docker
 ```
 
 You can also use environment variables:
 
 - `PWNINIT_AUTHOR` - Override author name
+- `PWNINIT_PROVIDER` - Default provider to use
+
+---
 
 ## Architecture
 
-![schema of the whole project architecture](./img/pwninit.png)
+`pwninit` is built with a modular, plugin-based architecture to support extensibility and ease of use for CTF binary exploitation workflows. The core components and their interactions are as follows:
+
+### Core Components
+
+- **`pwninit.py`**: Main CLI entry point for the `pwninit` command. Handles binary analysis, library management, and template generation.
+- **`run.py`**: CLI entry point for the `run` command. Manages local, remote, and debug execution modes.
+- **`config.py`**: Centralized configuration management for binary paths, libc, and provider settings.
+- **`io.py`**: I/O abstraction layer for local, remote (netcat/SSH), and debug (GDB) connections.
+- **`kernel.py`**: Kernel-specific utilities for kernel exploitation challenges.
+- **`farm.py`**: Challenge fetching and management from various providers.
+
+### Helper Modules
+
+- **`helpers/pwncontext.py`**: Defines the `PwnContext` class, which encapsulates the binary, libc, and execution environment.
+- **`helpers/utils.py`**: Utility functions for binary analysis, patching, and exploit development.
+- **`helpers/constants.py`**: Global constants and default values.
+
+### Plugin System
+
+- **`plugins/__init__.py`**: Base plugin interface and plugin manager.
+- **`plugins/docker.py`**: Docker provider for fetching binaries and libraries from Docker containers.
+- **`plugins/rootme.py`**: RootMe provider for fetching challenges from [RootMe](https://www.root-me.org/).
+- **`plugins/pwncollege.py`**: PwnCollege provider for fetching challenges from [PwnCollege](https://pwn.college/).
+
+### Templates
+
+- Pre-defined templates for `exploit.py`, `exploit.c`, `notes.md`, and `Makefile` to jumpstart exploit development.
+
+---
+
+### Architecture Diagram
+
+![](./img/pwninit.png)
+
+---
+
+## License
+
+`pwninit` is licensed under the **GNU General Public License v3.0** (GPLv3). See the [LICENCE](https://github.com/Super-Botman/pwninit.py/blob/main/LICENCE) file for details.
+
+---
+
+## Support
+
+- **Documentation**: [pwninit.0xb0tm4n.org](https://pwninit.0xb0tm4n.org/pwninit)
+- **GitHub**: [Super-Botman/pwninit.py](https://github.com/Super-Botman/pwninit.py)
+- **Issues**: [GitHub Issues](https://github.com/Super-Botman/pwninit.py/issues)
+
+---
+
+## Roadmap
+
+- **CTFd Provider**: Add support for fetching challenges from CTFd platforms.
+- **Tests**: Expand test coverage for core functionality and plugins.
+- **More Templates**: Add templates for additional exploit types (e.g., heap, format string).
+- **Improved Debugging**: Enhance GDB integration with custom commands and scripts.
