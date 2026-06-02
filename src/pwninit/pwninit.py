@@ -460,12 +460,13 @@ def parse_args() -> argparse.Namespace:
     args.setup = setup
     return args
 
-def build_docker(path: Path):
-    build = input(f"Do you want to build the docker image ? [y,N]: ")
-
-    if (path / "Dockerfile").exists() and build.lower() != 'y':
+def build_docker(path: Path):    
+    if not (path / "Dockerfile").exists():
         return
 
+    if input(f"Do you want to build the docker image ? [y,N]: ").lower() != 'y':
+        return
+    
     name = path.resolve().name
     image_tag = f"pwninit-{name}:latest".lower()
     try:
@@ -505,6 +506,8 @@ def cli() -> int:
     is_libc = bool(sorted_bins.get('libc'))
     if is_libc and not setup_libc_ld(sorted_bins, path):
         return 1 
+
+    build_docker(path)
 
     files = gen_files(path, sorted_bins)
     for s in args.setup or []:

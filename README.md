@@ -150,7 +150,4 @@ You can also use environment variables:
 
 ## TODO
 
-- Better patching
-- Fetch all libs and sources
-- Handle jails (fuck jails)
 - CTFd provider

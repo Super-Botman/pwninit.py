@@ -181,6 +181,7 @@ class IOContext:
         return container
 
     def __docker_get_bin_pid(self, top) -> int:
+        bin = ''
         if hasattr(self.config, "docker_bin"):
             bin = self.config.docker_bin
 
