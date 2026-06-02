@@ -10,24 +10,19 @@ from pwninit.farm import run_farm
 
 def addr_type(value: str) -> io.SSH | io.NC:
     if "@" in value:
-        creds, rest = value.split("@", 1)
-        user, password = creds.split(":", 1) if ":" in creds else (creds, "")
-        parts = rest.split(":")
+        creds, uri = value.split("@", 1)
+        user, password, *_ = creds.split(":", 1) + [None]
+        host, port, path, *_ = uri.split(":") + [None, None]
 
-        if len(parts) == 3:
-            host, port, path = parts
-        elif len(parts) == 2:
-            if parts[1].startswith("/"):
-                host, path = parts
-                port = 22
-            else:
-                host, port = parts
-                path = "."
-        else:
-            host = parts[0]
-            port, path = 22, "."
-
-        return io.SSH(user, host, password, int(port), path)
+        if path:
+            return io.SSH(user, host, password, int(port), path)
+        elif port and port.isdigit():
+            port = int(port)
+            return io.SSH(user, host, password, port)
+        elif port:
+            return io.SSH(user, host, password, path=port)
+        elif not port:
+            return io.SSH(user, host, password)
 
     elif ":" in value:
         host, port = value.split(":", 1)
@@ -120,9 +115,7 @@ def save_flag(flag):
         log.warning("Could not save flag to file: %s" % str(e))
 
 
-def cli():
-    args = parse_args()
-
+def get_exploit() -> tuple:
     spec = importlib.util.spec_from_file_location("exploit", "exploit.py")
     mod = importlib.util.module_from_spec(spec)
 
@@ -130,33 +123,30 @@ def cli():
         spec.loader.exec_module(mod)
         from pwninit import config
     except FileNotFoundError:
-        log.warn("exploit not found")
-        sys.exit(1)
+        return None, None
 
-    exploit = getattr(mod, "exploit", None)
+    return getattr(mod, "exploit", None), config
+    
+def cli() -> int:
+    args = parse_args()
+    exploit, config = get_exploit()
+    context.log_level = "DEBUG" if args.verbose else "INFO"
+
+    if not exploit:
+        log.warn("exploit not found")
+        return 1
 
     if not config:
         log.warn("config not found")
-        sys.exit(1)
+        return 1
 
     if not config.chall:
-        log.warn("invalide config, chall not set")
+        log.warn("invalid config, chall not set")
+        return 1
 
-    context.log_level = "DEBUG" if args.verbose else "INFO"
-
-    if config.binary:
-        try:
-            context.binary = ELF(config.binary)
-        except Exception as e:
-            log.warning("Could not load binary: %s" % str(e))
-
-    if config.libc:
-        try:
-            libc = ELF(config.libc)
-        except Exception as e:
-            log.warning("Could not load libc: %s" % str(e))
-    elif context.binary:
-        libc = context.binary.libc
+    context.binary = ELF(config.binary) if config.binary else None
+    if context.binary:
+        libc = ELF(config.libc) if config.libc else context.binary.libc
 
     if args.farm:
         return run_farm(args, config, exploit)
@@ -169,13 +159,8 @@ def cli():
         return 1
     io.set_ctx(ctx)
 
-    if context.binary:
-        ctx = helpers.PwnContext(io.ioctx, context.binary, libc, config.prefix)
-        helpers.set_ctx(ctx)
+    ctx = helpers.PwnContext(io.ioctx, context.binary, libc, config.prefix)
+    helpers.set_ctx(ctx)
 
-    try:
-        exploit(helpers.pwnctx, io.ioctx)
-    except Exception as e:
-        log.error("Exploit failed: %s" % str(e))
-
+    exploit(helpers.pwnctx, io.ioctx)
     return 0

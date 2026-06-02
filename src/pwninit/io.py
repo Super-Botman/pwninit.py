@@ -33,13 +33,14 @@ class SSH:
     Attributes:
         user (str): The SSH username.
         host (str): The host address.
-        password (str): The SSH password (default: "").
+        password (str|None): The SSH password (default: None).
         port (int): The SSH port (default: 22).
+        path (str): The SSH cwd (default: ".")
     """
 
     user: str
     host: str
-    password: str = ""
+    password: str|None = None
     port: int = 22
     path: str = "."
 
