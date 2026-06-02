@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import re
+import typing
 from pathlib import Path
 
 import magic
@@ -13,7 +14,7 @@ from pwn import ELF, context, libcdb, log, parse_ldd_output
 
 from pwninit.config import config
 from pwninit.kernel import decompress
-from pwninit.plugins import print_plugin_list, run_plugins
+from pwninit.plugins import print_plugin_list, run_plugins, Plugin
 
 QEMU_DEFAULT = [
     "qemu-system-x86_64",
@@ -24,8 +25,6 @@ QEMU_DEFAULT = [
     "-monitor", "none",
     "-append", "console=ttyS0",
 ]
-
-TOP_FLAGS = {"-p", "--provider", "-s", "--setup", "--list-plugins", "-l"}
 
 ARCHIVE_MIMES = {
     "application/x-cpio",
@@ -115,14 +114,6 @@ def ls(dir: Path) -> dict:
 
         elif is_kernel(path):
             result["kernel"].append(path)
-            if not os.path.isfile(f"{file}.elf"):
-                status = log.progress(f"converting {file} to elf")
-                subprocess.run(
-                    ["vmlinux-to-elf", file, f"{file}.elf"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                status.success("done")
 
         elif is_archive(path):
             result["archive"].append(path)
@@ -166,7 +157,28 @@ def sort_bins(files: dict) -> dict:
 
     return bins
 
+def run_command(cmd: str, args: list, cwd=None) -> tuple:
+    args = [cmd] + args
+    try:
+        proc = subprocess.run(args, capture_output=True, text=True, cwd=cwd)
+    except Exception as exception:
+        return "", str(exception)
 
+    return proc.stdout, proc.stderr
+
+def process_elf(files: dict):
+    files["elf"] = sort_bins(files)
+    for key, val in files["elf"].items():
+        if val:
+            log.success("%s: %s" % (key, ", ".join(val)))
+    
+def process_kernel(files: dict):
+    for file in files["kernel"]:
+        if not os.path.isfile(f"{file}.elf"):
+            status = log.progress(f"converting {file} to elf")
+            run_command("vmlinux-to-elf", [file, f"{file}.elf"])
+            status.success("done")
+    
 def process_binaries(path: Path) -> dict | None:
     files = ls(path)
 
@@ -174,24 +186,13 @@ def process_binaries(path: Path) -> dict | None:
         if val and key != "elf":
             log.success("%s found: %s" % (key, ", ".join(val)))
 
-    if not files["elf"] and not files["kernel"]:
-        return None
-    else:
-        files["elf"] = sort_bins(files)
-        for key, val in files["elf"].items():
-            if val:
-                log.success("%s: %s" % (key, ", ".join(val)))
+    if files["elf"]:
+        process_elf(files)
+
+    if files["kernel"]:
+        process_kernel(files)
 
     return files
-
-
-def run_command(cmd, args, cwd=None):
-    args = [cmd] + args
-    try:
-        proc = subprocess.run(args, capture_output=True, text=True, cwd=cwd)
-    except Exception as exception:
-        return "", str(exception)
-    return proc.stdout, proc.stderr
 
 
 def fetch_libs(bins: dict) -> bool:
@@ -249,26 +250,20 @@ def fetch_libs(bins: dict) -> bool:
 def patch_elf(bins: dict):
     chall = bins["challs"][0]
 
-    run_command("patchelf", ["--force-rpath", "--set-rpath", ".", chall])
+    run_command("patchelf", ["--force-rpath", "--set-rpath", "--no-sort", ".", chall])
     run_command(
         "patchelf",
         ["--set-interpreter", os.path.basename(bins["ld"][0]), chall],
     )
 
 
-def open_file(path: Path):
-    if path.is_file():
-        overwrite = input(f"Do you want to overwrite {path.name}? [Y,n]: ")
-        if overwrite.lower() == "n":
-            return None
-    return open(path, "w")
+def open_file(path: Path) -> None | typing.IO:
+    return open(path, "w") if path.is_file() and input(f"Do you want to overwrite {path.name}? [Y,n]: ").lower() != "n" else None
 
-
-def relpath(files, type):
+def relpath(files, type) -> None | str:
     return "./" + os.path.basename(files[type][0]) if files.get(type) else None
 
-
-def patch_run(path: str) -> int:
+def patch_run(path: str) -> bool:
     with open(path, "r") as f:
         lines = f.readlines()
 
@@ -279,7 +274,7 @@ def patch_run(path: str) -> int:
             break
 
     if start is None:
-        return 0
+        return False
 
     end = start
     for i in range(start, len(lines)):
@@ -290,7 +285,8 @@ def patch_run(path: str) -> int:
     cmd_lines = [l.rstrip("\n") for l in lines[start : end + 1]]
 
     if any('"$@"' in l for l in cmd_lines):
-        return 1
+        log.info(f"already patched {path}")
+        return True
 
     indent = "    "
     for l in cmd_lines[1:]:
@@ -311,7 +307,8 @@ def patch_run(path: str) -> int:
     with open(path, "w") as f:
         f.writelines(result)
 
-    return 2
+    log.success(f"patched {path}")
+    return True
 
 
 def gen_files(path: Path, bins: dict) -> dict:
@@ -322,17 +319,16 @@ def gen_files(path: Path, bins: dict) -> dict:
     checksecs = []
     for group in bins["elf"].values():
         for f in group or []:
-            try:
-                checksecs.append(
-                    f"[*] {f}\n" + ELF(f, checksec=False).checksec(color=False)
-                )
-            except Exception as e:
-                pass
+            checksecs.append(
+                f"[*] {f}\n" + ELF(f, checksec=False).checksec(color=False)
+            )
+
     checksecs_str = "\n\n".join(checksecs)
 
     archive = relpath(bins, "archive")
     kernel = relpath(bins, "kernel")
     qemu = None
+
     if archive or kernel:
         QEMU_DEFAULT.append("-kernel")
         QEMU_DEFAULT.append(relpath(files, "kernel"))
@@ -340,15 +336,8 @@ def gen_files(path: Path, bins: dict) -> dict:
         QEMU_DEFAULT.append(relpath(files, "archive"))
         qemu = QEMU_DEFAULT
 
-        for f in bins["shell"]:
-            ret = patch_run(f)
-            if ret == 1:
-                log.info(f"already patched {f}")
-                qemu = [f]
-
-            if ret == 2:
-                log.success(f"patched {f}")
-                qemu = [f]
+    if bins["shell"] and patch_run(bins["shell"][0]):
+        qemu = bins["shell"][0]
 
     files["exploit.py"] = Template(filename=str(templates / "exploit.py")).render(
         binary=relpath(bins["elf"], "challs"),
@@ -383,25 +372,25 @@ def setup_libc_ld(bins: dict, path: Path) -> bool:
     p = log.progress("fetching libs")
 
     if not fetch_libs(sorted_bins):
-        p.failure("Cannot fetch libs")
+        p.failure("cannot fetch libs")
     else:
         p.success("done")
 
-    if sorted_bins["libc"] and sorted_bins["ld"]:
-        try:
-            patch_elf(sorted_bins)
-            p = log.progress("unstriping libs")
-            log_level = context.log_level
-            context.log_level = "error"
-            for l in sorted_bins["libc"] + sorted_bins["libs"]:
-                libcdb.unstrip_libc(l)
-            context.log_level = log_level
-            p.success("done")
-            log.success("Patched binary with libc and ld")
-        except Exception as e:
-            log.error("Error patching binary: %s" % e)
-            return False
+    if not sorted_bins["ld"]:
+        log.error("no ld found or fetched")
+        return False
+    
+    patch_elf(sorted_bins)
 
+    p = log.progress("unstriping libs")
+    log_level = context.log_level
+    context.log_level = "error"
+    for l in sorted_bins["libc"] + sorted_bins["libs"]:
+        libcdb.unstrip_libc(l)
+    context.log_level = log_level
+    p.success("done")
+
+    log.success("patched binary with libc and ld")
     return True
 
 
@@ -418,35 +407,37 @@ def write_output_files(files: dict, path: Path) -> bool:
     return True
 
 
-def split_argv(argv=None):
-    argv = argv if argv is not None else sys.argv[1:]
-    provider, setup, top_args = [], [], []
+def split_argv() -> tuple:
+    argv = sys.argv[1:]
+    provider_args, setup_args, top_args = [], [], []
     i = 0
+    
+    provider = -1
+    setup = -1
+    for arg in argv:
+        if arg in ("-p", "--provider", ):
+            provider += 1
+            provider_args.append([])
+            continue
+        elif arg in ("-s", "--setup"):
+            setup += 1
+            setup_args.append([])
+            continue
+        elif arg in ("--list-plugins", "-l", "--help", "-h"):
+            top_args.append(arg)
+            setup, provider = False, False
+            continue
 
-    while i < len(argv):
-        if argv[i] in ("-p", "--provider", "-s", "--setup"):
-            flag = argv[i]
-            i += 1
-            if i >= len(argv):
-                log.error("%s requires a plugin name" % flag)
-                break
-            name = argv[i]
-            i += 1
-            plugin_args = []
-            while i < len(argv) and argv[i] not in TOP_FLAGS:
-                plugin_args.append(argv[i])
-                i += 1
-            (provider if flag in ("-p", "--provider") else setup).append(
-                (name, plugin_args)
-            )
-        else:
-            top_args.append(argv[i])
-            i += 1
+        if provider >= 0:
+            provider_args[provider].append(arg)
 
-    return top_args, provider, setup
+        elif setup >= 0:
+            setup_args[setup].append(arg)
+
+    return top_args, provider_args, setup_args
 
 
-def parse_top_args(top_args):
+def parse_top_args(top_args: list) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="pwninit - CTF binary exploitation setup tool"
     )
@@ -461,22 +452,33 @@ def parse_top_args(top_args):
     return parser.parse_args(top_args)
 
 
-def parse_plugin_args(plugin, raw_args):
-    parser = argparse.ArgumentParser(prog=plugin.name, description=plugin.description)
-    for a in plugin.args:
-        a = dict(a)
-        name = a.pop("name")
-        short = a.pop("short", None)
-        parser.add_argument(*([short, name] if short else [name]), **a)
-    return parser.parse_args(raw_args)
-
-
-def parse_args():
-    top_args, provider, setup = split_argv()
-    args = parse_top_args(top_args)
+def parse_args() -> argparse.Namespace:
+    top, provider, setup = split_argv()
+    args = parse_top_args(top)
     args.provider = provider
     args.setup = setup
     return args
+
+def build_docker(path: Path):
+    build = input(f"Do you want to build the docker image ? [y,N]: ")
+
+    if (path / "Dockerfile").exists() and build.lower() != 'y':
+        return
+
+    name = path.resolve().name
+    image_tag = f"pwninit-{name}:latest".lower()
+    try:
+        subprocess.run(
+            ["docker", "build", "--load", "-t", image_tag, "."],
+            cwd=str(path),
+            check=True,
+            capture_output=True,
+            env={**os.environ, "DOCKER_BUILDKIT": "1"},
+        )
+        log.success("Built docker image")
+    except subprocess.CalledProcessError as e:
+        log.warning(f"Build failed: {e.stderr.decode()}")
+        raise
 
 
 def cli() -> int:
@@ -493,39 +495,20 @@ def cli() -> int:
             path = ret
 
     sorted_bins = process_binaries(path)
-    if sorted_bins:
-        build = input(f"Do you want to build the docker image ? [y,N]: ")
-        if (path / "Dockerfile").exists() and build.lower() == 'y':
-            name = path.resolve().name
-            image_tag = f"pwninit-{name}:latest".lower()
-            try:
-                subprocess.run(
-                    ["docker", "build", "--load", "-t", image_tag, "."],
-                    cwd=str(path),
-                    check=True,
-                    capture_output=True,
-                    env={**os.environ, "DOCKER_BUILDKIT": "1"},
-                )
-                log.success("Built docker image")
-            except subprocess.CalledProcessError as e:
-                log.warning(f"Build failed: {e.stderr.decode()}")
-                raise
 
-        is_kernel = bool(sorted_bins.get("kernel"))
-
-        if not is_kernel:
-            if not setup_libc_ld(sorted_bins, path):
-                return 1
-    else:
-        log.info("No binaries found")
+    if not sorted_bins:
+        log.info("no binaries found")
         sorted_bins = {"elf": {}, "kernel": [], "archive": [], "shell": []}
 
-    files = gen_files(path, sorted_bins)
+    is_kernel = bool(sorted_bins.get("kernel"))
+    is_libc = bool(sorted_bins.get('libc'))
+    if is_libc and not setup_libc_ld(sorted_bins, path):
+        return 1 
 
+    files = gen_files(path, sorted_bins)
     for s in args.setup or []:
         ret = run_plugins(s, "setup", sorted_bins)
-        if ret:
-            files.update(ret)
+        files.update(ret if ret else {})
 
     if not write_output_files(files, path):
         return 1
