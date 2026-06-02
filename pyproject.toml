@@ -3,21 +3,21 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pwninit"
-version = "0.0.1"
+name = "pwninit.py"
+version = "0.1.0"
 authors = [
 { name="0xb0tm4n", email="0xb0tm4n@proton.me" },
 ]
-description = "A pwninit script"
+description = "A comprehensive Python toolkit for CTF exploit development."
 readme = "README.md"
 requires-python = ">=3.10"
 classifiers = [
-  "Programming Language :: Python :: 3",
-  "License :: OSI Approved :: MIT License",
-  "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: OS Independent",
 ]
 dependencies = [
-  "pwntools @ git+https://github.com/Gallopsled/pwntools.git@dev",
+  "pwntools",
   "argparse",
   "docker",
   "mako",
@@ -36,5 +36,4 @@ pwninit = "pwninit.pwninit:cli"
 run = "pwninit.run:cli"
 
 [project.urls]
-Homepage = "https://github.com/0xb0tm4n/pwninit.py"
-Issues = "https://github.com/0xb0tm4n/pwninit.py"
+Homepage = "https://github.com/Super-Botman/pwninit.py"
