@@ -8,18 +8,17 @@ from .helpers import pwnctx
 
 config = None
 
-
 class Config(SimpleNamespace):
     def __init__(
         self,
-        binary:ELF,
-        libc:ELF,
-        libs:list=[],
-        chall:list|str=[],
-        env:dict={},
-        archive:str="",
-        kernel:str="",
-        prefix:str="",
+        binary: ELF | str | None = None,
+        libc: ELF | str | None = None,
+        libs: list = [],
+        chall: list | str = [],
+        env: dict = {},
+        archive: str = "",
+        kernel: str = "",
+        prefix: str ="",
         **kwargs,
     ):
         global config

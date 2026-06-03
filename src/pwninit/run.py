@@ -9,6 +9,7 @@ import pwninit.helpers.pwncontext as helpers
 import pwninit.io as io
 from pwninit.farm import run_farm
 
+
 _NC_RE  = re.compile(r'^(?P<host>[^:@]*):(?P<port>\d+)$')
 _SSH_RE = re.compile(r'^(?P<user>[^:@]+)(?::(?P<password>[^@]*))?@(?P<host>[^:]+)(?::(?P<port>[^:]+))?(?::(?P<path>.+))?$')
 
@@ -89,14 +90,14 @@ def parse_args() -> argparse.Namespace:
         "-j", "--jobs", type=int, default=50, help="max concurrent exploit instances"
     )
 
-    args = parser.parse_args()
+    ns = parser.parse_args()
 
-    if args.gdb_cmd and not args.debug and not args.attach:
+    if ns.gdb_cmd and not ns.debug and not ns.attach:
         log.error("--gdb-cmd requires --debug or --attach")
-    if args.debug and args.attach:
+    if ns.debug and ns.attach:
         log.error("--debug and --attach are mutually exclusive")
 
-    return args
+    return ns
 
 def get_exploit() -> tuple:
     spec = importlib.util.spec_from_file_location("exploit", "exploit.py")
@@ -111,9 +112,9 @@ def get_exploit() -> tuple:
     return getattr(mod, "exploit", None), config
     
 def cli() -> int:
-    args = parse_args()
+    ns = parse_args()
     exploit, config = get_exploit()
-    context.log_level = "DEBUG" if args.verbose else "INFO"
+    context.log_level = "DEBUG" if ns.verbose else "INFO"
 
     if not exploit:
         log.warn("exploit not found")
@@ -127,15 +128,29 @@ def cli() -> int:
         log.warn("invalid config, chall not set")
         return 1
 
-    context.binary = ELF(config.binary) if config.binary else None
+    if config.binary:
+        context.binary = ELF(config.binary) if config.binary else None
+
     if context.binary:
         libc = ELF(config.libc) if config.libc else context.binary.libc
 
     if config.libs:
         config.libs = [ELF(l) for l in config.libs]
 
-    if args.farm:
-        return run_farm(args, config, exploit)
+    if ns.farm:
+        return run_farm(ns, config, exploit)
+
+    args = io.Args(
+        remote=ns.remote,
+        local=ns.local,
+        ssl=ns.ssl,
+        docker=ns.docker,
+        debug=ns.debug,
+        attach=ns.attach,
+        gdb_cmd=ns.gdb_cmd,
+        strace=ns.strace,
+        verbose=ns.verbose,
+    )
 
     if (args.local or args.docker) and not args.remote:
         args.remote = io.NC("localhost", 5000)

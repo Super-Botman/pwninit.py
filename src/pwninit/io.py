@@ -45,6 +45,29 @@ class SSH:
     path: str | None = None
 
 
+@dataclass
+class Args:
+    """IO connection parameters
+    
+    Attributes:
+        remote (SSH | NC | None): Remote target as NC (ip:port) or SSH (user:pass@ip:port). ``None`` runs locally.
+        local (bool): Spawn the challenge as a local server before connecting.
+        ssl (bool): Wrap the TCP connection in TLS. Only applies to NC targets.
+        docker (bool): Launch the challenge via Docker before connecting.
+        debug (bool): Open the binary under GDB on launch. Mutually exclusive with ``attach``.
+        attach (bool): Spawn normally then attach GDB after launch. Mutually exclusive with ``debug``.
+        gdb_cmd (str | None): GDB script passed on startup. Requires ``debug`` or ``attach``.
+        strace (bool): Run under strace, writing output to ``strace.out``.
+    """
+    remote: SSH | NC | None = None
+    local: bool = False
+    ssl: bool = False
+    docker: bool = False
+    debug: bool = False
+    attach: bool = False
+    gdb_cmd: str | None = None
+    strace: bool = False
+
 class IOContext:
     """A context wrapper class managing multi-tier execution pipes spanning local
 
@@ -60,7 +83,7 @@ class IOContext:
 
     def __init__(
         self,
-        args: argparse.Namespace,
+        args: Args,
         config: Any,
         proc: pwnlib.tubes.process.process | None = None,
         conn: pwnlib.tubes.tube | None = None,
