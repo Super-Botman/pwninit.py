@@ -23,6 +23,12 @@ class PwnContext:
         io: IOContext,
         config: Config
     ) -> None:
+        """Initializes the PwnContext with tracking objects and wraps target binaries as ELF objects.
+
+        Args:
+            io (IOContext): The current process execution or remote network context wrapper.
+            config (Config): Project workspace mappings containing target binaries and dependencies.
+        """
         self.io = io
         self.config = config
 
@@ -47,10 +53,6 @@ class PwnContext:
     @property
     def libs(self) -> list:
         return self._libs
-
-    @property
-    def prefix(self) -> str | bytes | None:
-        return self.config.prefix
 
     @property
     def canary(self) -> int | None:
@@ -296,7 +298,7 @@ class PwnContext:
         return rop.chain()
 
     def bof(self, data: bytes | int, opt: dict = {}, bp: int = 0, **kwargs) -> bytes:
-        """Generate a basic buffer overflow container layout injecting optional canary or base pointers.
+        """Generate a basic buffer overflow payload injecting optional canary or base pointers based on binary arch.
 
         Args:
             data (bytes | int): Intended execution payload control destination (e.g., return address).
@@ -327,7 +329,7 @@ class PwnContext:
         return flat({offset_val: data} | opt, **kwargs)
 
     def ret2shellcode(self, addr: int | str, ret: bool = True, **kwargs) -> bytes:
-        """Create a buffer payload designed to resolve and jump to local shellcode injection coordinates.
+        """Generate a shellcode and a ropchain to call it.
 
         Args:
             addr (int | str): Target point reference calculation indicator context.
@@ -360,7 +362,7 @@ class PwnContext:
         return self.bof(payload, opt={0: [padding, shellcode]}, **kwargs)
 
     def ret2win(self, win: str | int, params: list | tuple = [], ret: bool = True, **kwargs) -> bytes:
-        """Generate an execution redirect straight into an explicit execution function.
+        """Generate a ret2win payload.
 
         Args:
             win (str | int): Name identifier or absolute function target.
@@ -381,7 +383,7 @@ class PwnContext:
         return self.bof(payload, **kwargs)
 
     def ret2libc(self, ret: bool = True, **kwargs) -> bytes:
-        """Generate a payload framing layout routing control back against libc system components.
+        """Generate a ret2libc payload.
 
         Example:
         
@@ -392,7 +394,7 @@ class PwnContext:
         return self.bof(payload, **kwargs)
 
     def ret2plt(self, func: str | int = "puts", ret2main: str | int = "main", ret: bool = True, **kwargs) -> bytes:
-        """Generate an execution sequence leaking standard internal references through global linkage references.
+        """Generate a payload that call func(got[func]), usefull to defeat PIE.
 
         Args:
             func (str | int): PLT mapping reference to extract details via.
@@ -412,7 +414,7 @@ class PwnContext:
         return self.bof(payload, **kwargs)
 
     def format_string(self, n: int = 100) -> bytes:
-        """Evaluate and trace structural offset positioning over string interaction vulnerabilities.
+        """Find the format string offset.
 
         Example:
         
@@ -435,7 +437,7 @@ class PwnContext:
         lock: int = 0x0,
         chain: int = 0x0,
     ) -> bytes:
-        """Generate file stream arrangement objects to achieve execution manipulation.
+        """Generate file stream objects to get an arb call.
 
         Args:
             func (str | int): Target destination routine location address values.
@@ -471,27 +473,16 @@ class PwnContext:
         return next(self.libc.search(b"/bin/sh\0"))
 
 
-pwnctx = None
-
-def set_ctx(new_ctx: PwnContext):
-    """Assign the global singleton instance context configuration.
-
-    Example:
-    
-        >>> ctx = PwnContext(io, config)
-        >>> set_ctx(ctx)
-    """
-    global pwnctx
-    pwnctx = new_ctx
-
-def _require_ctx():
+def _require_ctx() -> PwnContext:
+    from pwninit.context import pwnctx
     if pwnctx is None:
-        raise RuntimeError("PwnContext not initialized — call set_ctx() first")
+        raise RuntimeError("PwnContext not initialized - call set_ctx() first")
+    return pwnctx
 
 def _ctx(name):
     def wrapper(*args, **kwargs):
-        _require_ctx()
-        return getattr(pwnctx, name)(*args, **kwargs)
+        ctx = _require_ctx()
+        return getattr(ctx, name)(*args, **kwargs)
 
     wrapper.__name__ = name
     return wrapper

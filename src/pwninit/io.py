@@ -45,6 +45,29 @@ class SSH:
     path: str | None = None
 
 
+@dataclass
+class Args:
+    """IO connection parameters
+    
+    Attributes:
+        remote (SSH | NC | None): Remote target as NC (ip:port) or SSH (user:pass@ip:port). ``None`` runs locally.
+        local (bool): Spawn the challenge as a local server before connecting.
+        ssl (bool): Wrap the TCP connection in TLS. Only applies to NC targets.
+        docker (bool): Launch the challenge via Docker before connecting.
+        debug (bool): Open the binary under GDB on launch. Mutually exclusive with ``attach``.
+        attach (bool): Spawn normally then attach GDB after launch. Mutually exclusive with ``debug``.
+        gdb_cmd (str | None): GDB script passed on startup. Requires ``debug`` or ``attach``.
+        strace (bool): Run under strace, writing output to ``strace.out``.
+    """
+    remote: SSH | NC | None = None
+    local: bool = False
+    ssl: bool = False
+    docker: bool = False
+    debug: bool = False
+    attach: bool = False
+    gdb_cmd: str | None = None
+    strace: bool = False
+
 class IOContext:
     """A context wrapper class managing multi-tier execution pipes spanning local
 
@@ -60,17 +83,35 @@ class IOContext:
 
     def __init__(
         self,
-        args: argparse.Namespace,
+        args: Args,
         config: Any,
         proc: pwnlib.tubes.process.process | None = None,
         conn: pwnlib.tubes.tube | None = None,
         ssh_conn: pwnlib.tubes.ssh | None = None,
     ) -> None:
+        """Initializes the IOContext tracking state and establishes the connection pipeline.
+
+        Args:
+            args (Args): Parsed command-line execution and environment flags.
+            config (Any): Workspace configuration mapping binaries, files, and environment paths.
+            proc (pwnlib.tubes.process.process | None, optional): An active local target 
+                process instance. Defaults to None.
+            conn (pwnlib.tubes.tube | None, optional): An active communication channel 
+                (e.g., remote socket, SSH process). Defaults to None.
+            ssh_conn (pwnlib.tubes.ssh | None, optional): An active raw pwntools SSH context 
+                session handle. Defaults to None.
+
+        Side Effects:
+            Triggers `self.connect()` during initialization to immediately evaluate environment 
+            arguments and bind to the correct communication pipeline.
+        """
         self.args = args
         self.config = config
-        self.ssh_conn: Any | None = ssh_conn
-        self.conn: Any | None = conn
-        self.proc: Any | None = proc
+        self.ssh_conn = ssh_conn
+        self.conn = conn
+        self.proc = proc
+
+        self.connect()
 
     def __getattr__(self, name: str) -> Any:
         if name != "conn" and self.conn is not None:
@@ -139,6 +180,7 @@ class IOContext:
             return self.__create_kernel_process()
 
         gdb_script = self.args.gdb_cmd if self.args.gdb_cmd else ""
+
         if self.args.debug:
             return gdb.debug(
                 self.config.chall,
@@ -152,11 +194,13 @@ class IOContext:
             )
         else:
             p = process(self.config.chall, env=self.config.env)
-            if self.args.attach:
-                gdb.attach(p, gdbscript=gdb_script)
-                log.info("Attached gdb")
-                pause()
-            return p
+
+        if self.args.attach:
+            gdb.attach(p, gdbscript=gdb_script)
+            log.info("Attached gdb")
+            pause()
+
+        return p
 
     def __launch_docker(self) -> Any:
         client = docker.from_env()
@@ -167,18 +211,19 @@ class IOContext:
 
         container = next((c for c in client.containers.list() if c.image.tags[-1] == image_tag), None)
 
-        if not container:
-            container = client.containers.run(
-                image_tag,
-                pid_mode="host",
-                ports={
-                    f"{self.args.remote.port}/tcp": self.args.remote.port
-                },
-                privileged=True,
-                detach=True,
-            )
+        if container:
+            return container
 
-        return container
+        return client.containers.run(
+            image_tag,
+            pid_mode="host",
+            ports={
+                f"{self.args.remote.port}/tcp": self.args.remote.port
+            },
+            privileged=True,
+            detach=True,
+        )
+
 
     def __docker_get_bin_pid(self, top: dict) -> int | None:
         binary_name = ""
@@ -196,13 +241,14 @@ class IOContext:
                     binary_name = match.group(1)
             elif binary_name == cmd:
                 return int(pid)
+
         return None
 
     def __debug_docker(self, container: Any) -> None:
         processes = container.top()
         pid = self.__docker_get_bin_pid(processes)
         if not pid:
-            log.warning("Bin isn't running — check Dockerfile or bin name")
+            log.warning("Bin isn't running - check Dockerfile or bin name")
             exit(1)
 
         gdb.attach(pid, exe=self.config.binary)
@@ -233,6 +279,9 @@ class IOContext:
         if self.conn:
             return self
 
+        if self.ssh_conn:
+            return self.__create_ssh_process()
+
         is_local_process = not self.args.remote or (
             self.args.local and not self.proc
         )
@@ -249,9 +298,7 @@ class IOContext:
 
         if self.args.remote and is_ssh:
             self.ssh_conn = self.__create_ssh_connection()
-            if not self.ssh_conn:
-                return None
-            self.conn = self.__create_ssh_process()
+            self.conn = self.__create_ssh_process() if self.ssh_conn else None
         elif self.args.remote:
             self.conn = self.__create_remote_connection()
 
@@ -370,50 +417,20 @@ class IOContext:
         """Examine text contents currently available within pipes to isolate and process computational puzzles."""
         utils.solve_pow(self.conn.clean())
 
-
-ioctx: IOContext | None = None
-
-
-def set_ctx(new_ctx: IOContext) -> None:
-    """Assign the global singleton instance context configuration.
-
-    Example:
-    
-        >>> ctx = IOContext(args, config)
-        >>> set_ctx(ctx)
-    """
-    global ioctx
-    ioctx = new_ctx
-
-
-def _require_ctx() -> None:
+def _require_ctx() -> IOContext:
+    from pwninit.context import ioctx
     if ioctx is None:
-        raise RuntimeError("IOContext not initialized — call set_ctx() first")
+        raise RuntimeError("IOContext not initialized - call set_ctx() first")
+    return ioctx
 
 
 def _ctx(method_name: str) -> Any:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        _require_ctx()
-        return getattr(ioctx, method_name)(*args, **kwargs)
+        ctx = _require_ctx()
+        return getattr(ctx, method_name)(*args, **kwargs)
 
     wrapper.__name__ = method_name
     return wrapper
-
-
-def connect(
-    args: Any | None = None,
-    config: Any | None = None,
-    default: bool = False,
-) -> IOContext | None:
-    global ioctx
-    if not args:
-        args = ioctx.args
-    if not config:
-        config = ioctx.config
-    io = IOContext(args, config)
-    if default:
-        ioctx = io
-    return io.connect()
 
 
 reconnect = _ctx("reconnect")
@@ -433,3 +450,32 @@ urecv = _ctx("urecv")
 clean = _ctx("clean")
 itrv = _ctx("itrv")
 pow = _ctx("pow")
+
+
+def connect(
+    args: Args | None = None,
+    config: Config | None = None,
+    default: bool = True,
+) -> IOContext | None:
+    """Instantiate a new IOContext connection
+    
+    Args:
+        args (argparse.Namespace | None): Args to pass to IOContext (default keep the actual args)
+        config (Config | None): Config to pass to IOContext (default keep the actual config)
+        default (bool): Set the new connection to default (default false)
+
+    Returns:
+        IOContext | None: Active IOContext instance
+    """    
+    if not args or not config:
+        ctx = _require_ctx()
+
+    args = args if args else ctx.args
+    config = config if config else ctx.config
+
+    io = IOContext(args, config)
+    if default:
+        from pwninit.context import set_ctx
+        set_ctx(io)
+    return io
+

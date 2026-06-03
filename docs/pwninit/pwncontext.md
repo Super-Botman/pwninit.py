@@ -1,3 +1,1 @@
-# Pwncontext
-
 ::: pwninit.helpers.pwncontext

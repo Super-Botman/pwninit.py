@@ -3,6 +3,8 @@ import argparse
 import importlib
 import importlib.util
 import sys
+import types
+from typing import Any
 from pwn import log
 from pathlib import Path
 
@@ -28,7 +30,7 @@ class Plugin:
     provide_args = []
     setup_args = []
 
-    def provide(self, args, path):
+    def provide(self, args: argparse.Namespace, path: str) -> str:
         """
         Provide functionality for the plugin (e.g., generate payloads, files, or configurations).
 
@@ -41,7 +43,7 @@ class Plugin:
         """
         raise NotImplementedError
 
-    def setup(self, args, bins):
+    def setup(self, args: argparse.Namespace, bins: dict) -> dict:
         """
         Set up the environment or perform pre-exploitation tasks (e.g., start a service, patch a binary).
 
@@ -55,7 +57,7 @@ class Plugin:
         raise NotImplementedError
 
     @property
-    def has_provide(self):
+    def has_provide(self) -> bool:
         """
         Check if the plugin implements the `provide` method.
 
@@ -65,7 +67,7 @@ class Plugin:
         return type(self).provide is not Plugin.provide
 
     @property
-    def has_setup(self):
+    def has_setup(self) -> bool:
         """
         Check if the plugin implements the `setup` method.
 
@@ -74,7 +76,7 @@ class Plugin:
         """
         return type(self).setup is not Plugin.setup
 
-def arg(name, **kwargs):
+def arg(name: str, **kwargs: Any) -> dict:
     """
     Helper function to define a plugin argument.
 
@@ -87,7 +89,7 @@ def arg(name, **kwargs):
     """
     return {"name": name, **kwargs}
 
-def _load_plugin(name, path):
+def _load_plugin(name: str, path: Path) -> types.ModuleType|None:
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
         return None
@@ -139,7 +141,7 @@ def _parse_plugin_args(plugin, raw_args, role):
         return None
 
 
-def run_plugins(args, role, settings):
+def run_plugins(args: list, role: str, settings: dict|str) -> Any:
     """
     Run a plugin with the specified role and arguments.
 
@@ -238,7 +240,7 @@ def _build_parser(plugin, role):
     return parser
 
 
-def _format_arg(a):
+def _format_arg(a:dict) -> str:
     a = dict(a)
     name = a.get("name", "?")
     short = a.get("short", "")
@@ -253,7 +255,7 @@ def _format_arg(a):
         parts += " (default: %s)" % default
     return parts
 
-def print_plugin_list():
+def print_plugin_list() -> None:
     """
     Print a list of all available plugins and their usage information.
     """

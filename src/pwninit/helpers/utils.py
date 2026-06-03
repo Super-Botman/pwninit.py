@@ -1,5 +1,6 @@
 import math
 import re
+from typing import Any
 from subprocess import run, PIPE, DEVNULL
 
 from pwninit.config import config
@@ -64,7 +65,7 @@ class HouseOfMuney:
         """
         return self.gnuhash.get_symbol(name).entry
 
-    def set_sym(self, name: str | bytes, sym):
+    def set_sym(self, name: str, sym: str):
         """Overwrite an existing symbol entry in the ELF data payload.
 
         Args:
@@ -322,7 +323,7 @@ def safelink_bf64(ptr: int) -> int:
     return fd
 
 
-def printx(**kwargs):
+def printx(**kwargs: Any):
     """Print hex formatted values for debugging specified keyword arguments.
 
     Args:

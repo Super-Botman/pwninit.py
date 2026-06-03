@@ -5,8 +5,7 @@ import re
 
 from pwn import ELF, context, log
 
-import pwninit.helpers.pwncontext as helpers
-import pwninit.io as io
+from pwninit import IOContext, PwnContext, set_ctx
 from pwninit.farm import run_farm
 
 _NC_RE  = re.compile(r'^(?P<host>[^:@]*):(?P<port>\d+)$')
@@ -26,7 +25,7 @@ def addr_type(value: str) -> io.SSH | io.NC:
         "Invalid format. Expected 'ip:port', 'user@ip:port', 'user@ip:/path', or 'user:pass@ip:port:/path'."
     )
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Runner for pwn exploits.")
 
     # --- Target ---
@@ -89,24 +88,14 @@ def parse_args():
         "-j", "--jobs", type=int, default=50, help="max concurrent exploit instances"
     )
 
-    args = parser.parse_args()
+    ns = parser.parse_args()
 
-    if args.gdb_cmd and not args.debug and not args.attach:
+    if ns.gdb_cmd and not ns.debug and not ns.attach:
         log.error("--gdb-cmd requires --debug or --attach")
-    if args.debug and args.attach:
+    if ns.debug and ns.attach:
         log.error("--debug and --attach are mutually exclusive")
 
-    return args
-
-
-def save_flag(flag):
-    try:
-        with open("flag", "w") as f:
-            f.write(flag)
-        log.success("Flag saved to file")
-    except Exception as e:
-        log.warning("Could not save flag to file: %s" % str(e))
-
+    return ns
 
 def get_exploit() -> tuple:
     spec = importlib.util.spec_from_file_location("exploit", "exploit.py")
@@ -121,9 +110,9 @@ def get_exploit() -> tuple:
     return getattr(mod, "exploit", None), config
     
 def cli() -> int:
-    args = parse_args()
+    ns = parse_args()
     exploit, config = get_exploit()
-    context.log_level = "DEBUG" if args.verbose else "INFO"
+    context.log_level = "DEBUG" if ns.verbose else "INFO"
 
     if not exploit:
         log.warn("exploit not found")
@@ -137,26 +126,39 @@ def cli() -> int:
         log.warn("invalid config, chall not set")
         return 1
 
-    context.binary = ELF(config.binary) if config.binary else None
+    if config.binary:
+        context.binary = ELF(config.binary) if config.binary else None
+
     if context.binary:
         libc = ELF(config.libc) if config.libc else context.binary.libc
 
     if config.libs:
         config.libs = [ELF(l) for l in config.libs]
 
-    if args.farm:
-        return run_farm(args, config, exploit)
+    if ns.farm:
+        return run_farm(ns, config, exploit)
+
+    args = io.Args(
+        remote=ns.remote,
+        local=ns.local,
+        ssl=ns.ssl,
+        docker=ns.docker,
+        debug=ns.debug,
+        attach=ns.attach,
+        gdb_cmd=ns.gdb_cmd,
+        strace=ns.strace,
+    )
 
     if (args.local or args.docker) and not args.remote:
         args.remote = io.NC("localhost", 5000)
 
-    ctx = io.IOContext(args, config)
+    ctx = IOContext(args, config)
     if not ctx.connect():
         return 1
-    io.set_ctx(ctx)
+    set_ctx(ctx)
 
-    ctx = helpers.PwnContext(io.ioctx, config)
-    helpers.set_ctx(ctx)
+    ctx = PwnContext(io.ioctx, config)
+    set_ctx(ctx)
 
     exploit(helpers.pwnctx, io.ioctx)
 

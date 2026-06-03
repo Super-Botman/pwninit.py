@@ -7,11 +7,17 @@ A Python toolkit for CTF binary exploitation. Streamline setup, development, and
 ## Installation
 
 ```sh
-pipx install git+https://github.com/Super-Botman/pwninit.py.git
+pipx install pwninit.py
 ```
 
-## Basic Exploit Example
+## Basic Usage Example
 
+Setup the chall:
+```sh
+$ pwninit
+```
+
+Edit exploit.py:
 ```python
 from pwninit import *
 
@@ -24,7 +30,12 @@ def exploit(ctx, io):
     exe = ctx.elf
     libc = ctx.libc
 
-    payload = b"A" * 72 + p64(exe.symbols["win"])
-    sl(payload)
+    ctx.offset = 128
+    sl(ret2win('shell', ret=False))
     itrv()
+```
+
+Run the exploit:
+```sh
+$ run
 ```
