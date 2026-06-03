@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url>
+        <loc>https://pwninit.0xb0tm4n.org/0.1/</loc>
+      </url>
+      <url>
+        <loc>https://pwninit.0xb0tm4n.org/0.1/cli/intro/</loc>
+      </url>
+      <url>
+        <loc>https://pwninit.0xb0tm4n.org/0.1/cli/plugins/</loc>
+      </url>
+      <url>
+        <loc>https://pwninit.0xb0tm4n.org/0.1/pwninit/</loc>
+      </url>
+      <url>
+        <loc>https://pwninit.0xb0tm4n.org/0.1/pwninit/config/</loc>
+      </url>
+      <url>
+        <loc>https://pwninit.0xb0tm4n.org/0.1/pwninit/io/</loc>
+      </url>
+      <url>
+        <loc>https://pwninit.0xb0tm4n.org/0.1/pwninit/pwncontext/</loc>
+      </url>
+      <url>
+        <loc>https://pwninit.0xb0tm4n.org/0.1/pwninit/utils/</loc>
+      </url>
+      <url>
+        <loc>https://pwninit.0xb0tm4n.org/0.1/pwninit/ctx/</loc>
+      </url>
+      <url>
+        <loc>https://pwninit.0xb0tm4n.org/0.1/pwninit/plugins/</loc>
+      </url>
+</urlset>
