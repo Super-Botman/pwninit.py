@@ -41,7 +41,7 @@ Check [CLI - Introduction](/cli/intro/) for an introduction on the commands prov
 
 ### Exploit Development
 
-Check [Pwninit](/pwninit) for the full library API or [Exploitation Development](http://localhost:8000/cli/intro/#exploits) to learn how to create exploit usable with [run](/cli/intro#run-exploit-execution).
+Check [Pwninit](/pwninit) for the full library API or [Exploitation Development](/cli/intro/#exploits) to learn how to create exploit usable with [run](/cli/intro#run-exploit-execution).
 
 #### Example
 
