@@ -26,7 +26,7 @@ def addr_type(value: str) -> io.SSH | io.NC:
         "Invalid format. Expected 'ip:port', 'user@ip:port', 'user@ip:/path', or 'user:pass@ip:port:/path'."
     )
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Runner for pwn exploits.")
 
     # --- Target ---
@@ -97,16 +97,6 @@ def parse_args():
         log.error("--debug and --attach are mutually exclusive")
 
     return args
-
-
-def save_flag(flag):
-    try:
-        with open("flag", "w") as f:
-            f.write(flag)
-        log.success("Flag saved to file")
-    except Exception as e:
-        log.warning("Could not save flag to file: %s" % str(e))
-
 
 def get_exploit() -> tuple:
     spec = importlib.util.spec_from_file_location("exploit", "exploit.py")

@@ -68,9 +68,9 @@ class IOContext:
     ) -> None:
         self.args = args
         self.config = config
-        self.ssh_conn: Any | None = ssh_conn
-        self.conn: Any | None = conn
-        self.proc: Any | None = proc
+        self.ssh_conn = ssh_conn
+        self.conn = conn
+        self.proc = proc
 
     def __getattr__(self, name: str) -> Any:
         if name != "conn" and self.conn is not None:
@@ -139,6 +139,7 @@ class IOContext:
             return self.__create_kernel_process()
 
         gdb_script = self.args.gdb_cmd if self.args.gdb_cmd else ""
+
         if self.args.debug:
             return gdb.debug(
                 self.config.chall,
@@ -152,11 +153,13 @@ class IOContext:
             )
         else:
             p = process(self.config.chall, env=self.config.env)
-            if self.args.attach:
-                gdb.attach(p, gdbscript=gdb_script)
-                log.info("Attached gdb")
-                pause()
-            return p
+
+        if self.args.attach:
+            gdb.attach(p, gdbscript=gdb_script)
+            log.info("Attached gdb")
+            pause()
+
+        return p
 
     def __launch_docker(self) -> Any:
         client = docker.from_env()
@@ -167,18 +170,19 @@ class IOContext:
 
         container = next((c for c in client.containers.list() if c.image.tags[-1] == image_tag), None)
 
-        if not container:
-            container = client.containers.run(
-                image_tag,
-                pid_mode="host",
-                ports={
-                    f"{self.args.remote.port}/tcp": self.args.remote.port
-                },
-                privileged=True,
-                detach=True,
-            )
+        if container:
+            return container
 
-        return container
+        return client.containers.run(
+            image_tag,
+            pid_mode="host",
+            ports={
+                f"{self.args.remote.port}/tcp": self.args.remote.port
+            },
+            privileged=True,
+            detach=True,
+        )
+
 
     def __docker_get_bin_pid(self, top: dict) -> int | None:
         binary_name = ""
@@ -196,6 +200,7 @@ class IOContext:
                     binary_name = match.group(1)
             elif binary_name == cmd:
                 return int(pid)
+
         return None
 
     def __debug_docker(self, container: Any) -> None:
@@ -233,6 +238,9 @@ class IOContext:
         if self.conn:
             return self
 
+        if self.ssh_conn:
+            return self.__create_ssh_process()
+
         is_local_process = not self.args.remote or (
             self.args.local and not self.proc
         )
@@ -249,9 +257,7 @@ class IOContext:
 
         if self.args.remote and is_ssh:
             self.ssh_conn = self.__create_ssh_connection()
-            if not self.ssh_conn:
-                return None
-            self.conn = self.__create_ssh_process()
+            self.conn = self.__create_ssh_process() if self.ssh_conn else None
         elif self.args.remote:
             self.conn = self.__create_remote_connection()
 
@@ -401,16 +407,29 @@ def _ctx(method_name: str) -> Any:
 
 
 def connect(
-    args: Any | None = None,
-    config: Any | None = None,
+    args: argparse.Namespace | None = None,
+    config: Config | None = None,
     default: bool = False,
 ) -> IOContext | None:
+    """Instantiate a new IOContext connection
+    
+    Args:
+        args (argparse.Namespace | None): Args to pass to IOContext (default keep the actual args)
+        config (Config | None): Config to pass to IOContext (default keep the actual config)
+        default (bool): Set the new connection to default (default false)
+
+    Returns:
+        IOContext | None: Active IOContext instance
+    """
     global ioctx
+
     if not args:
         args = ioctx.args
     if not config:
         config = ioctx.config
+
     io = IOContext(args, config)
+
     if default:
         ioctx = io
     return io.connect()

@@ -40,9 +40,9 @@ plugins:
           paths: [src] 
 
 nav:
-  - Home:
-      - Introduction: index.md
-      - Plugins: plugins.md
+  - CLI:
+      - Introduction: cli/intro.md
+      - Plugins: cli/plugins.md
   - Pwninit:
     - Overwiew: pwninit/index.md
     - API:
