@@ -23,6 +23,12 @@ class PwnContext:
         io: IOContext,
         config: Config
     ) -> None:
+        """Initializes the PwnContext with tracking objects and wraps target binaries as ELF objects.
+
+        Args:
+            io (IOContext): The current process execution or remote network context wrapper.
+            config (Config): Project workspace mappings containing target binaries and dependencies.
+        """
         self.io = io
         self.config = config
 
@@ -467,27 +473,16 @@ class PwnContext:
         return next(self.libc.search(b"/bin/sh\0"))
 
 
-pwnctx = None
-
-def set_ctx(new_ctx: PwnContext):
-    """Assign the global singleton instance context configuration.
-
-    Example:
-    
-        >>> ctx = PwnContext(io, config)
-        >>> set_ctx(ctx)
-    """
-    global pwnctx
-    pwnctx = new_ctx
-
-def _require_ctx():
+def _require_ctx() -> PwnContext:
+    from pwninit.context import pwnctx
     if pwnctx is None:
         raise RuntimeError("PwnContext not initialized - call set_ctx() first")
+    return pwnctx
 
 def _ctx(name):
     def wrapper(*args, **kwargs):
-        _require_ctx()
-        return getattr(pwnctx, name)(*args, **kwargs)
+        ctx = _require_ctx()
+        return getattr(ctx, name)(*args, **kwargs)
 
     wrapper.__name__ = name
     return wrapper

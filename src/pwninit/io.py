@@ -89,11 +89,29 @@ class IOContext:
         conn: pwnlib.tubes.tube | None = None,
         ssh_conn: pwnlib.tubes.ssh | None = None,
     ) -> None:
+        """Initializes the IOContext tracking state and establishes the connection pipeline.
+
+        Args:
+            args (Args): Parsed command-line execution and environment flags.
+            config (Any): Workspace configuration mapping binaries, files, and environment paths.
+            proc (pwnlib.tubes.process.process | None, optional): An active local target 
+                process instance. Defaults to None.
+            conn (pwnlib.tubes.tube | None, optional): An active communication channel 
+                (e.g., remote socket, SSH process). Defaults to None.
+            ssh_conn (pwnlib.tubes.ssh | None, optional): An active raw pwntools SSH context 
+                session handle. Defaults to None.
+
+        Side Effects:
+            Triggers `self.connect()` during initialization to immediately evaluate environment 
+            arguments and bind to the correct communication pipeline.
+        """
         self.args = args
         self.config = config
         self.ssh_conn = ssh_conn
         self.conn = conn
         self.proc = proc
+
+        self.connect()
 
     def __getattr__(self, name: str) -> Any:
         if name != "conn" and self.conn is not None:
@@ -399,63 +417,20 @@ class IOContext:
         """Examine text contents currently available within pipes to isolate and process computational puzzles."""
         utils.solve_pow(self.conn.clean())
 
-
-ioctx: IOContext | None = None
-
-
-def set_ctx(new_ctx: IOContext) -> None:
-    """Assign the global singleton instance context configuration.
-
-    Example:
-    
-        >>> ctx = IOContext(args, config)
-        >>> set_ctx(ctx)
-    """
-    global ioctx
-    ioctx = new_ctx
-
-
-def _require_ctx() -> None:
+def _require_ctx() -> IOContext:
+    from pwninit.context import ioctx
     if ioctx is None:
         raise RuntimeError("IOContext not initialized - call set_ctx() first")
+    return ioctx
 
 
 def _ctx(method_name: str) -> Any:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        _require_ctx()
-        return getattr(ioctx, method_name)(*args, **kwargs)
+        ctx = _require_ctx()
+        return getattr(ctx, method_name)(*args, **kwargs)
 
     wrapper.__name__ = method_name
     return wrapper
-
-
-def connect(
-    args: argparse.Namespace | None = None,
-    config: Config | None = None,
-    default: bool = False,
-) -> IOContext | None:
-    """Instantiate a new IOContext connection
-    
-    Args:
-        args (argparse.Namespace | None): Args to pass to IOContext (default keep the actual args)
-        config (Config | None): Config to pass to IOContext (default keep the actual config)
-        default (bool): Set the new connection to default (default false)
-
-    Returns:
-        IOContext | None: Active IOContext instance
-    """
-    global ioctx
-
-    if not args:
-        args = ioctx.args
-    if not config:
-        config = ioctx.config
-
-    io = IOContext(args, config)
-
-    if default:
-        ioctx = io
-    return io.connect()
 
 
 reconnect = _ctx("reconnect")
@@ -475,3 +450,32 @@ urecv = _ctx("urecv")
 clean = _ctx("clean")
 itrv = _ctx("itrv")
 pow = _ctx("pow")
+
+
+def connect(
+    args: Args | None = None,
+    config: Config | None = None,
+    default: bool = True,
+) -> IOContext | None:
+    """Instantiate a new IOContext connection
+    
+    Args:
+        args (argparse.Namespace | None): Args to pass to IOContext (default keep the actual args)
+        config (Config | None): Config to pass to IOContext (default keep the actual config)
+        default (bool): Set the new connection to default (default false)
+
+    Returns:
+        IOContext | None: Active IOContext instance
+    """    
+    if not args or not config:
+        ctx = _require_ctx()
+
+    args = args if args else ctx.args
+    config = config if config else ctx.config
+
+    io = IOContext(args, config)
+    if default:
+        from pwninit.context import set_ctx
+        set_ctx(io)
+    return io
+

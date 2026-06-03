@@ -5,10 +5,8 @@ import re
 
 from pwn import ELF, context, log
 
-import pwninit.helpers.pwncontext as helpers
-import pwninit.io as io
+from pwninit import IOContext, PwnContext, set_ctx
 from pwninit.farm import run_farm
-
 
 _NC_RE  = re.compile(r'^(?P<host>[^:@]*):(?P<port>\d+)$')
 _SSH_RE = re.compile(r'^(?P<user>[^:@]+)(?::(?P<password>[^@]*))?@(?P<host>[^:]+)(?::(?P<port>[^:]+))?(?::(?P<path>.+))?$')
@@ -149,19 +147,18 @@ def cli() -> int:
         attach=ns.attach,
         gdb_cmd=ns.gdb_cmd,
         strace=ns.strace,
-        verbose=ns.verbose,
     )
 
     if (args.local or args.docker) and not args.remote:
         args.remote = io.NC("localhost", 5000)
 
-    ctx = io.IOContext(args, config)
+    ctx = IOContext(args, config)
     if not ctx.connect():
         return 1
-    io.set_ctx(ctx)
+    set_ctx(ctx)
 
-    ctx = helpers.PwnContext(io.ioctx, config)
-    helpers.set_ctx(ctx)
+    ctx = PwnContext(io.ioctx, config)
+    set_ctx(ctx)
 
     exploit(helpers.pwnctx, io.ioctx)
 
