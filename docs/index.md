@@ -1,4 +1,3 @@
-
 # pwninit
 
 A comprehensive Python toolkit for CTF binary exploitation challenges that streamlines the setup and execution process.
@@ -13,6 +12,8 @@ A comprehensive Python toolkit for CTF binary exploitation challenges that strea
 - **Debugging support** - Integrated GDB debugging with custom commands
 - **Provider system** - Extensible system for fetching challenges from various sources (Docker, RootMe, PwnCollege)
 - **Utility plugins** - Modular utilities for common exploitation tasks
+
+---
 
 ## Installation
 
@@ -34,14 +35,16 @@ pipx install pwninit.py
 
 ## Usage
 
-## CLI
+### CLI
+
 Check [CLI - Introduction](/cli/intro/) for an introduction on the commands provided.
 
-## Exploit Development
+### Exploit Development
 
-Check [Pwninit](/pwninit) for the full library API
+Check [Pwninit](/pwninit) for the full library API or [Exploitation Development](http://localhost:8000/cli/intro/#exploits) to learn how to create exploit usable with [run](/cli/intro#run-exploit-execution).
 
-### Example
+#### Example
+
 ```py
 from pwninit import *
 
@@ -65,78 +68,45 @@ def exploit(ctx: PwnContext, ioctx: IOContext):
 
 ---
 
-## Generated Files
-
-`pwninit` automatically generates the following files in your working directory:
-
-- **exploit.py** - Main exploit template with pre-configured binary and libc paths
-- **exploit.c** - C exploit template for kernel exploitation
-- **notes.md** - Documentation template with checksec output, binary metadata, and exploit development notes
-- **Makefile** - Pre-configured Makefile for compiling exploits
-- **Patched binary** - Original binary patched with the correct libc/linker
-
----
-
-## Configuration
-
-`pwninit` supports configuration through `~/.config/pwninit.conf`:
-
-```ini
-[default]
-author = YourName
-provider = docker
-```
-
-You can also use environment variables:
-
-- `PWNINIT_AUTHOR` - Override author name
-- `PWNINIT_PROVIDER` - Default provider to use
-
----
-
-Here are your architecture docs converted to clean markdown tables:
-
----
 ## Architecture
 
 ### Core Components
 
-| Module | Description |
-|---|---|
+| Module       | Description                                                                                                           |
+| ------------ | --------------------------------------------------------------------------------------------------------------------- |
 | `pwninit.py` | Main CLI entry point for the `pwninit` command. Handles binary analysis, library management, and template generation. |
-| `run.py` | CLI entry point for the `run` command. Manages local, remote, and debug execution modes. |
-| `config.py` | Centralized configuration management for binary paths, libc, and provider settings. |
-| `io.py` | I/O abstraction layer for local, remote (netcat/SSH), and debug (GDB) connections. |
-| `kernel.py` | Kernel-specific utilities for kernel exploitation challenges. |
-| `farm.py` | Challenge fetching and management from various providers. |
+| `run.py`     | CLI entry point for the `run` command. Manages local, remote, and debug execution modes.                              |
+| `config.py`  | Centralized configuration management for binary paths, libc, and provider settings.                                   |
+| `context.py` | Definition of global singleton instances used in exploit development.                                                 |
+| `io.py`      | I/O abstraction layer for local, remote (netcat/SSH), and debug (GDB) connections.                                    |
+| `kernel.py`  | Kernel-specific utilities for kernel exploitation challenges.                                                         |
+| `farm.py`    | Challenge fetching and management from various providers.                                                             |
 
 ### Helper Modules
 
-| Module | Description |
-|---|---|
+| Module                  | Description                                                                                     |
+| ----------------------- | ----------------------------------------------------------------------------------------------- |
 | `helpers/pwncontext.py` | Defines the `PwnContext` class, which encapsulates the binary, libc, and execution environment. |
-| `helpers/utils.py` | Utility functions for binary analysis, patching, and exploit development. |
-| `helpers/constants.py` | Global constants and default values. |
+| `helpers/utils.py`      | Utility functions for binary analysis, patching, and exploit development.                       |
+| `helpers/constants.py`  | Global constants and default values.                                                            |
 
 ### Plugin System
 
-| Plugin | Description |
-|---|---|
-| `plugins/__init__.py` | Base plugin interface and plugin manager. |
-| `plugins/docker.py` | Docker provider for fetching binaries and libraries from Docker containers. |
-| `plugins/rootme.py` | RootMe provider for fetching challenges from [RootMe](https://www.root-me.org/). |
+| Plugin                  | Description                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------ |
+| `plugins/__init__.py`   | Base plugin interface and plugin manager.                                            |
+| `plugins/docker.py`     | Docker provider for fetching binaries and libraries from Docker containers.          |
+| `plugins/rootme.py`     | RootMe provider for fetching challenges from [RootMe](https://www.root-me.org/).     |
 | `plugins/pwncollege.py` | PwnCollege provider for fetching challenges from [PwnCollege](https://pwn.college/). |
 
 ### Templates
 
-| Template | Purpose |
-|---|---|
-| `exploit.py` | Python exploit starter template. |
-| `exploit.c` | C exploit starter template. |
-| `notes.md` | Challenge notes template. |
-| `Makefile` | Build automation for exploit development. |
-
----
+| Template     | Purpose                                   |
+| ------------ | ----------------------------------------- |
+| `exploit.py` | Python exploit starter template.          |
+| `exploit.c`  | C exploit starter template.               |
+| `notes.md`   | Challenge notes template.                 |
+| `Makefile`   | Build automation for exploit development. |
 
 ### Architecture Diagram
 
@@ -163,4 +133,3 @@ Here are your architecture docs converted to clean markdown tables:
 - **CTFd Provider**: Add support for fetching challenges from CTFd platforms.
 - **Tests**: Expand test coverage for core functionality and plugins.
 - **More Templates**: Add templates for additional exploit types (e.g., heap, format string).
-- **Improved Debugging**: Enhance GDB integration with custom commands and scripts.

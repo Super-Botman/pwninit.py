@@ -1,0 +1,66 @@
+[project]
+site_name = "pwninit Documentation"
+site_url = "https://pwninit.0xb0tm4n.org"
+repo_url = "https://github.com/Super-Botman/pwninit.py"
+
+nav = [
+  {"Home" =  "index.md"},
+  {"CLI" = [
+    {"Introduction" = "cli/intro.md"},
+    {"Plugins" = "cli/plugins.md"},
+  ]},
+  {"Pwninit" = [
+    {"Overview" = "pwninit/index.md"},
+    {"API" = [
+      {"Config" = "pwninit/config.md"},
+      {"IOContext" = "pwninit/io.md"},
+      {"PwnContext" = "pwninit/pwncontext.md"},
+      {"Utils" = "pwninit/utils.md"},
+      {"Context" = "pwninit/ctx.md"},
+      {"Plugins" = "pwninit/plugins.md"},
+    ]},
+  ]},
+]
+
+[project.validation]
+unresolved_references = true
+unresolved_footnotes = true
+unused_definitions = true
+unused_footnotes = true
+shadowed_definitions = true
+shadowed_footnotes = true
+invalid_links = true
+invalid_link_anchors = true
+
+[project.theme]
+features = [
+  "content.code.annotate",
+  "navigation.tabs",
+  "navigation.sections",
+   "navigation.footer"
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "blue grey"
+accent = "red"
+
+[project.theme.palette.toggle]
+icon = "material/brightness-7"
+name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "blue grey"
+accent = "red"
+
+[project.theme.palette.toggle]
+icon = "material/brightness-4"
+name = "Switch to light mode"
+
+[project.markdown_extensions.pymdownx.superfences]
+
+[project.plugins.mkdocstrings.handlers.python]
+paths = ["src"]
