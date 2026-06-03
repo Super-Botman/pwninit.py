@@ -482,7 +482,7 @@ def set_ctx(new_ctx: PwnContext):
 
 def _require_ctx():
     if pwnctx is None:
-        raise RuntimeError("PwnContext not initialized — call set_ctx() first")
+        raise RuntimeError("PwnContext not initialized - call set_ctx() first")
 
 def _ctx(name):
     def wrapper(*args, **kwargs):

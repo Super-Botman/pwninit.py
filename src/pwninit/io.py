@@ -207,7 +207,7 @@ class IOContext:
         processes = container.top()
         pid = self.__docker_get_bin_pid(processes)
         if not pid:
-            log.warning("Bin isn't running — check Dockerfile or bin name")
+            log.warning("Bin isn't running - check Dockerfile or bin name")
             exit(1)
 
         gdb.attach(pid, exe=self.config.binary)
@@ -394,7 +394,7 @@ def set_ctx(new_ctx: IOContext) -> None:
 
 def _require_ctx() -> None:
     if ioctx is None:
-        raise RuntimeError("IOContext not initialized — call set_ctx() first")
+        raise RuntimeError("IOContext not initialized - call set_ctx() first")
 
 
 def _ctx(method_name: str) -> Any:

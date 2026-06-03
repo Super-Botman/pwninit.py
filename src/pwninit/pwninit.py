@@ -355,16 +355,18 @@ def gen_files(path: Path, bins: dict) -> dict:
         author=config.get("author", "pwner", "PWNINIT_AUTHOR"),
     )
 
-    if bins.get("kernel"):
-        kernel_module = relpath(bins["elf"], "challs")
-        if kernel_module:
-            kernel_module = kernel_module.partition(".")[0][2:]
+    if not kernel:
+        return files
 
-        files["exploit.c"] = Template(filename=str(templates / "exploit.c")).render(
-            kernel_module=kernel_module
-        )
-        files["Makefile"] = Template(filename=str(templates / "Makefile")).render()
+    kernel_module = relpath(bins["elf"], "challs")
+    if kernel_module:
+        kernel_module = kernel_module.partition(".")[0][2:]
 
+    files["exploit.c"] = Template(filename=str(templates / "exploit.c")).render()
+
+    files["exploit.h"] = Template(filename=str(templates / "exploit.c")).render()
+
+    files["Makefile"] = Template(filename=str(templates / "Makefile")).render()
     return files
 
 
