@@ -186,8 +186,7 @@ def process_binaries(path: Path) -> dict | None:
         if val and key != "elf":
             log.success("%s found: %s" % (key, ", ".join(val)))
 
-    if files["elf"]:
-        process_elf(files)
+    process_elf(files)
 
     if files["kernel"]:
         process_kernel(files)
@@ -258,7 +257,11 @@ def patch_elf(bins: dict):
 
 
 def open_file(path: Path) -> None | typing.IO:
-    return open(path, "w") if path.is_file() and input(f"Do you want to overwrite {path.name}? [Y,n]: ").lower() != "n" else None
+    op = True
+    if path.is_file():
+        op = input(f"Do you want to overwrite {path.name}? [Y,n]: ").lower() != 'n'
+
+    return open(path, "w") if op else None
 
 def relpath(files, type) -> None | str:
     return "./" + os.path.basename(files[type][0]) if files.get(type) else None
@@ -399,14 +402,11 @@ def setup_libc_ld(bins: dict, path: Path) -> bool:
 
 def write_output_files(files: dict, path: Path) -> bool:
     for filename, content in files.items():
-        try:
-            f = open_file(path / filename)
-            if f:
-                f.write(content)
-                f.close()
-                log.success("Created %s" % filename)
-        except Exception as e:
-            log.error("Error creating %s: %s" % (filename, e))
+        f = open_file(path / filename)
+        if f:
+            f.write(content)
+            f.close()
+            log.success("Created %s" % filename)
     return True
 
 
