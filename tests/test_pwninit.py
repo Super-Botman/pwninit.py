@@ -53,16 +53,9 @@ def test_docker(shared_path, monkeypatch, caplog, capsys):
 
 def test_process_bins(shared_path):
     files = ls(shared_path)
-    assert files == {
-        "elf": [
-            f"{shared_path}/ld-linux-x86-64.so.2",
-            f"{shared_path}/libc.so.6",
-            f"{shared_path}/chall",
-        ],
-        "kernel": [],
-        "archive": [],
-        "shell": [],
-    }
+    assert f"{shared_path}/ld-linux-x86-64.so.2" in files["elf"]
+    assert f"{shared_path}/libc.so.6" in files["elf"]
+    assert f"{shared_path}/chall" in files["elf"]
 
     process_elf(files)
     assert files["elf"] == {

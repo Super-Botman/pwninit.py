@@ -12,7 +12,7 @@ import requests
 from pwn import log
 
 from pwninit.io import IOContext
-from pwninit.helpers import PwnContext
+from pwninit.pwncontext import PwnContext
 
 SERVER_TIMEOUT = 5
 POST_PERIOD = 5
