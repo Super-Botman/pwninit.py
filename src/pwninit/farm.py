@@ -265,7 +265,7 @@ def run_farm(args, config, exploit):
             if port:
                 team_args.remote.port = port
             ioctx = IOContext(team_args, config)
-            ctx = PwnContext(ioctx.proc, config.binary, config.libc)
+            ctx = PwnContext(ioctx.proc)
             team_ctxs[team_name] = (copy.deepcopy(ioctx), copy.deepcopy(ctx))
         except Exception as e:
             log.warning("%s: failed to init - %s" % (team_name, e))

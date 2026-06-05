@@ -21,7 +21,6 @@ class PwnContext:
     def __init__(
         self,
         io: IOContext,
-        config: Config
     ) -> None:
         """Initializes the PwnContext with tracking objects and wraps target binaries as ELF objects.
 
@@ -30,16 +29,16 @@ class PwnContext:
             config (Config): Project workspace mappings containing target binaries and dependencies.
         """
         self.io = io
-        self.config = config
+        self.config = io.config
 
         self._offset = None
         self._canary = None
 
-        self._elf = ELF(config.binary) if isinstance(config.binary, (str, bytes)) else config.binary
-        self._libc = ELF(config.libc) if isinstance(config.libc, (str, bytes)) else config.libc        
+        self._elf = ELF(io.config.binary) if isinstance(io.config.binary, (str, bytes)) else io.config.binary
+        self._libc = ELF(io.config.libc) if isinstance(io.config.libc, (str, bytes)) else io.config.libc        
         self._libs = [
             ELF(lib) if isinstance(lib, (str, bytes)) else lib 
-            for lib in (config.libs or [])
+            for lib in (io.config.libs or [])
         ]
 
     @property

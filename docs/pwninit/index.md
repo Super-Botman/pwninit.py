@@ -32,7 +32,7 @@ config = Config(
 )
 
 ioctx = io.IOContext(args, config)
-pwnctx = helpers.PwnContext(ioctx, config)
+pwnctx = helpers.PwnContext(ioctx)
 ```
 
 1. [`io.Args`](io/#pwninit.io.Args) - argument parser context
