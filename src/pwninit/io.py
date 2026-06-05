@@ -210,7 +210,7 @@ class IOContext:
             self.config, "docker_image", f"pwninit-{name}:latest"
         ).lower()
 
-        container = next((c for c in client.containers.list() if c.image.tags[-1] == image_tag), None)
+        container = next((c for c in client.containers.list() if c.image.tags and c.image.tags[-1] == image_tag), None)
 
         if container:
             return container

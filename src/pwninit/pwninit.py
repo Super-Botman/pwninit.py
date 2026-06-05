@@ -370,25 +370,28 @@ def gen_files(path: Path, bins: dict) -> dict:
         kernel_module = kernel_module.partition(".")[0][2:]
 
     files["exploit.c"] = Template(filename=str(templates / "exploit.c")).render()
-
-    files["exploit.h"] = Template(filename=str(templates / "exploit.c")).render()
-
+    files["exploit.h"] = Template(filename=str(templates / "exploit.h")).render()
     files["Makefile"] = Template(filename=str(templates / "Makefile")).render()
     return files
 
 
 def setup_libc_ld(bins: dict, path: Path) -> bool:
     sorted_bins = bins["elf"]
+    if not sorted_bins["libc"]:
+        return False
+    
     p = log.progress("fetching libs")
-
-    if not fetch_libs(sorted_bins):
-        p.failure("cannot fetch libs")
-    else:
-        p.success("done")
+    fetch_ok = fetch_libs(sorted_bins)
 
     if not sorted_bins["ld"]:
+        p.failure("cannot fetch libs")
         log.error("no ld found or fetched")
         return False
+
+    if fetch_ok:
+        p.success("done")
+    else:
+        p.success("done (ld already present)")
     
     patch_elf(sorted_bins)
 
@@ -510,8 +513,7 @@ def cli() -> int:
         sorted_bins = {"elf": {}, "kernel": [], "archive": [], "shell": []}
 
     is_kernel = bool(sorted_bins.get("kernel"))
-    is_libc = bool(sorted_bins["elf"].get('libc'))
-
+    is_libc = bool(sorted_bins.get("elf", {}).get("libc"))
     if is_libc and not setup_libc_ld(sorted_bins, path):
         return 1 
 
