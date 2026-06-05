@@ -211,14 +211,25 @@ class IOContext:
         image_tag = getattr(
             self.config, "docker_image", f"pwninit-{name}:latest"
         ).lower()
-        print("TEST2", image_tag)
+
+        try:
+            client.images.get(image_tag)
+        except docker.errors.ImageNotFound:
+            raise RuntimeError(
+                f"Docker image '{image_tag}' not found. "
+                "Build step likely failed or was not loaded (--load missing)."
+            )
 
         container = next((c for c in client.containers.list() if c.image.tags and c.image.tags[-1] == image_tag), None)
 
         if container:
+            if container.status != "running":
+                container.start()
+
+            container.reload()
             return container
 
-        return client.containers.run(
+        container = client.containers.run(
             image_tag,
             pid_mode="host",
             ports={
@@ -226,6 +237,18 @@ class IOContext:
             },
             privileged=True,
             detach=True,
+        )
+
+        for _ in range(50):
+            container.reload()
+            if container.status == "running":
+                return container
+            time.sleep(0.1)
+
+        logs = container.logs().decode(errors="ignore")
+
+        raise RuntimeError(
+            f"Container failed to start properly.\nLogs:\n{logs}"
         )
 
 

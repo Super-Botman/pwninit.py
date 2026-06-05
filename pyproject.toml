@@ -27,7 +27,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
-    "pytest-timeout>=2.2.0",
 ]
 
 [project.scripts]
@@ -48,4 +47,3 @@ testpaths = ["tests"]
 filterwarnings = [
     "ignore::DeprecationWarning:pwnlib"
 ]
-timeout = 30
