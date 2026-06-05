@@ -1,7 +1,7 @@
 .venv
 dist
 dist/*
-src/pwninit.egg-info
+src/*.egg-info
 dev_env
 *.pyc
 __pycache__
