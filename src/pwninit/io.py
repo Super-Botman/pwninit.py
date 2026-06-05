@@ -122,7 +122,7 @@ class IOContext:
         raise AttributeError(name)
 
     def __create_remote_connection(self) -> Any:
-        deadline = time.time() + 10.0
+        deadline = time.time() + 5.0
         last_err = None
         io = None
 
