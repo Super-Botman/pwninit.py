@@ -3,10 +3,10 @@ import re
 import os
 from typing import NoReturn
 
-from pwn import ELF, ROP, asm, context, cyclic, cyclic_find, log, shellcraft, flat
+from pwn import ELF, ROP, asm, context, cyclic, cyclic_find, log, shellcraft, flat, unpack, p64, p32, signal
 from pwnlib.rop.gadgets import Gadget
 
-from pwninit.helpers.utils import u64, upack, encode
+from pwninit.helpers.utils import u64, u32, upack, encode
 from pwninit.helpers.constants import *
 
 class PwnContext:
@@ -16,6 +16,9 @@ class PwnContext:
     Attributes:
         io (IOContext): The active IO connection or process context.
         config (Config): The configuration setup containing binaries and paths.
+        elf (ELF): The binary used.
+        libc (ELF): The libc used.
+        libs (ELF): The libs used.
     """
 
     def __init__(
@@ -26,7 +29,6 @@ class PwnContext:
 
         Args:
             io (IOContext): The current process execution or remote network context wrapper.
-            config (Config): Project workspace mappings containing target binaries and dependencies.
         """
         self.io = io
         self.config = io.config
@@ -90,8 +92,7 @@ class PwnContext:
         if self._offset: return self._offset
 
         context.delete_corefiles = True
-        if hasattr(self.io, "sendline"):
-            self.io.sendline(cyclic(1000))
+        self.io.sl(cyclic(1000))
         self.io.poll(block=True)
         core = self.io.corefile
         self._offset = cyclic_find(core.fault_addr)

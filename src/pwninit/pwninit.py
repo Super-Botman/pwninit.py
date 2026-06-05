@@ -195,13 +195,22 @@ def process_binaries(path: Path) -> dict | None:
 
 
 def fetch_libs(bins: dict) -> bool:
-    if not bins["libc"]:
-        return False
+    chall = bins["challs"][0]
+    ldd_out, _ = run_command("ldd", [chall])
+    needed = set(os.path.basename(p) for p in parse_ldd_output(ldd_out) if 'libc.so.6' not in p)
+    need_ld = not bins["ld"]
 
     libc = bins["libc"][0]
     blacklist = set(
         os.path.basename(l) for l in bins["libs"] + bins["ld"] + bins["libc"]
     )
+
+    missing = set(
+        n for n in needed if n not in blacklist
+    )
+
+    if not missing:
+        return True
 
     lib_path = libcdb.download_libraries(libc)
     if lib_path is None:
@@ -209,11 +218,6 @@ def fetch_libs(bins: dict) -> bool:
         return False
 
     lib_path = Path(lib_path)
-
-    chall = bins["challs"][0]
-    ldd_out, _ = run_command("ldd", [chall])
-    needed = set(os.path.basename(p) for p in parse_ldd_output(ldd_out) if 'libc.so.6' not in p)
-    need_ld = not bins["ld"]
 
     ld_fetched = False
     for f in lib_path.iterdir():
@@ -226,7 +230,7 @@ def fetch_libs(bins: dict) -> bool:
 
         is_ld = "ld-linux" in f.name or f.name.startswith("ld-")
 
-        if f.name not in needed and not (is_ld and need_ld):
+        if f.name not in missing and not (is_ld and need_ld):
             continue
 
         if ld_fetched and is_ld:
@@ -249,7 +253,7 @@ def fetch_libs(bins: dict) -> bool:
 def patch_elf(bins: dict):
     chall = bins["challs"][0]
 
-    run_command("patchelf", ["--force-rpath", "--set-rpath", "--no-sort", ".", chall])
+    run_command("patchelf", ["--no-sort", "--force-rpath", "--set-rpath", ".", chall])
     run_command(
         "patchelf",
         ["--set-interpreter", os.path.basename(bins["ld"][0]), chall],
@@ -506,7 +510,8 @@ def cli() -> int:
         sorted_bins = {"elf": {}, "kernel": [], "archive": [], "shell": []}
 
     is_kernel = bool(sorted_bins.get("kernel"))
-    is_libc = bool(sorted_bins.get('libc'))
+    is_libc = bool(sorted_bins["elf"].get('libc'))
+
     if is_libc and not setup_libc_ld(sorted_bins, path):
         return 1 
 
