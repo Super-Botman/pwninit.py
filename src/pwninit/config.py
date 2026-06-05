@@ -53,8 +53,7 @@ author=0xB0tm4n
             try:
                 with open(self.config_file, "w") as f:
                     f.write(default_config)
-                log.success(f"Created default config file at {
-                            self.config_file}")
+                log.success(f"Created default config file at {self.config_file}")
             except Exception as e:
                 log.warning(f"Could not create config file: {e}")
 
