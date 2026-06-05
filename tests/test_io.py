@@ -92,5 +92,4 @@ def test_docker_arg(monkeypatch, shared_path, docker_setup):
     ioctx.sl("")
     assert b"CHALL" in ioctx.rl()
     ioctx.sl("A"*200)
-    assert not ioctx.test_connection()
     ioctx.close()

@@ -122,11 +122,41 @@ class IOContext:
         raise AttributeError(name)
 
     def __create_remote_connection(self) -> Any:
-        return remote(
-            self.args.remote.host,
-            self.args.remote.port,
-            ssl=self.args.ssl,
-        )
+        deadline = time.time() + 5.0
+        last_err = None
+        io = None
+
+        p = log.progress(f"Opening connection to {self.args.remote.host} on port {self.args.remote.port}")
+
+        while time.time() < deadline:
+            if io:
+                io.close()
+            try:
+                log_level = context.log_level
+                context.log_level = 'error'
+                io = remote(
+                    self.args.remote.host,
+                    self.args.remote.port,
+                    ssl=self.args.ssl,
+                    timeout=1,
+                )
+
+                if not io.connected():
+                    io.close()
+                    continue
+
+                io.unrecv(io.recv(timeout=0.5))
+                context.log_level = log_level
+
+                p.success("Done")
+                return io
+
+            except Exception as e:
+                last_err = e
+                time.sleep(0.1)
+
+        p.failure(f"Could not connect within 5s: {last_err}")
+        return None
 
     def __create_ssh_connection(self) -> Any:
         return ssh(
@@ -244,7 +274,6 @@ class IOContext:
         for _ in range(50):
             container.reload()
             if container.status == "running":
-                time.sleep(2) # let time for docker to spin up
                 return container
             time.sleep(0.1)
 
@@ -283,15 +312,7 @@ class IOContext:
 
         gdb.attach(pid, exe=self.config.binary)
 
-    def test_connection(self) -> bool:
-        """Verify the health of the connection pipe by probing available bytes."""
-        try:
-            buf = self.recv(timeout=0.5)
-            self.unrecv(buf)
-            return True
-        except EOFError:
-            return False
-
+        
     def connect(self, enable_log: bool = True) -> "IOContext | None":
         """Establish connection bindings matching active environment arguments.
 
@@ -322,10 +343,6 @@ class IOContext:
         if is_local_process:
             self.conn = self.proc = self.__create_local_process()
             
-        if self.args.local:
-            while not self.test_connection():
-                continue
-
         if self.args.docker:
             container = self.__launch_docker()
 
@@ -336,9 +353,6 @@ class IOContext:
             self.conn = self.__create_remote_connection()
 
         if is_docker_debug:
-            while not self.test_connection():
-                continue
-
             self.__debug_docker(container)
 
         if not self.conn:
