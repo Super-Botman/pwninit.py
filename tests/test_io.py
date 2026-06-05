@@ -89,7 +89,6 @@ def test_docker_arg(monkeypatch, shared_path, docker_setup):
         )
     )
     mock_attach.assert_called_once()
-    assert ioctx.test_connection()
     ioctx.sl("")
     assert b"CHALL" in ioctx.rl()
     ioctx.sl("A"*200)

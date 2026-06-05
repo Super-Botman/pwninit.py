@@ -237,11 +237,14 @@ class IOContext:
             },
             privileged=True,
             detach=True,
+            tty=True,
+            stdin_open=True
         )
 
         for _ in range(50):
             container.reload()
             if container.status == "running":
+                time.sleep(2) # let time for docker to spin up
                 return container
             time.sleep(0.1)
 
@@ -283,7 +286,7 @@ class IOContext:
     def test_connection(self) -> bool:
         """Verify the health of the connection pipe by probing available bytes."""
         try:
-            buf = self.recv(timeout=2)
+            buf = self.recv(timeout=0.5)
             self.unrecv(buf)
             return True
         except EOFError:
@@ -325,7 +328,6 @@ class IOContext:
 
         if self.args.docker:
             container = self.__launch_docker()
-            time.sleep(1) # let docker start :3
 
         if self.args.remote and is_ssh:
             self.ssh_conn = self.__create_ssh_connection()
