@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 from pwn import log
 
-
 class Config:
     def __init__(self):
         self.config_file = Path.home() / ".config" / "pwninit.conf"
@@ -19,8 +18,7 @@ class Config:
                             key, value = line.split("=", 1)
                             self._config_data[key.strip()] = value.strip().strip("\"'")
             except Exception as e:
-                log.warning(f"Error reading config file {
-                            self.config_file}: {e}")
+                log.warning(f"Error reading config file {self.config_file}: {e}")
 
     def get(self, key, default=None, env_var=None):
         if env_var and env_var in os.environ:
