@@ -231,7 +231,6 @@ class IOContext:
         if self.args.attach:
             gdb.attach(p, gdbscript=gdb_script)
             log.info("Attached gdb")
-            pause()
 
         return p
 
@@ -351,8 +350,6 @@ class IOContext:
             self.conn = self.__create_ssh_process() if self.ssh_conn else None
         elif self.args.remote:
             self.conn = self.__create_remote_connection()
-
-        pause()
 
         if not self.conn:
             log.warning("Failed to create process")
