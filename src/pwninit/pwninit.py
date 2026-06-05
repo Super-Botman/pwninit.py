@@ -471,6 +471,7 @@ def build_docker(path: Path):
     
     name = path.resolve().name
     image_tag = f"pwninit-{name}:latest".lower()
+    p = log.progress("Building docker image")
     try:
         subprocess.run(
             ["docker", "build", "--load", "-t", image_tag, "."],
@@ -479,9 +480,9 @@ def build_docker(path: Path):
             capture_output=True,
             env={**os.environ, "DOCKER_BUILDKIT": "1"},
         )
-        log.success("Built docker image")
+        p.success("done")
     except subprocess.CalledProcessError as e:
-        log.warning(f"Build failed: {e.stderr.decode()}")
+        p.failure(f"Build failed: {e.stderr.decode()}")
         raise
 
 

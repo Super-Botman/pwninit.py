@@ -2,6 +2,7 @@ import argparse
 import subprocess
 import time
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -239,7 +240,7 @@ class IOContext:
                 match = re.search(r'(?i)exec:([^,\s]+)', cmd)
                 if match:
                     binary_name = match.group(1)
-            elif binary_name == cmd:
+            elif binary_name == cmd or binary_name == Path(cmd).name:
                 return int(pid)
 
         return None
@@ -249,7 +250,7 @@ class IOContext:
         pid = self.__docker_get_bin_pid(processes)
         if not pid:
             log.warning("Bin isn't running - check Dockerfile or bin name")
-            exit(1)
+            sys.exit(1)
 
         gdb.attach(pid, exe=self.config.binary)
 
@@ -260,7 +261,6 @@ class IOContext:
             self.unrecv(buf)
             return True
         except EOFError:
-            log.warning("Failed to connect to docker")
             return False
 
     def connect(self, enable_log: bool = True) -> "IOContext | None":
@@ -293,8 +293,13 @@ class IOContext:
         if is_local_process:
             self.conn = self.proc = self.__create_local_process()
             
+        if self.args.local:
+            while not self.test_connection():
+                continue
+
         if self.args.docker:
             container = self.__launch_docker()
+            time.sleep(1) # let docker start :3
 
         if self.args.remote and is_ssh:
             self.ssh_conn = self.__create_ssh_connection()
@@ -302,7 +307,10 @@ class IOContext:
         elif self.args.remote:
             self.conn = self.__create_remote_connection()
 
-        if is_docker_debug and self.test_connection():
+        if is_docker_debug:
+            while not self.test_connection():
+                continue
+
             self.__debug_docker(container)
 
         if not self.conn:
@@ -316,19 +324,26 @@ class IOContext:
 
     def reconnect(self, enable_log: bool = True) -> "IOContext | None":
         """Close active handles and re-run initialization structures."""
-        if self.conn:
-            self.close(enable_log)
+        self.close(enable_log)
         return self.connect(enable_log)
 
     def close(self, enable_log: bool = True) -> None:
         """Safely close active descriptor pipes and clear tracking variables."""
-        if not self.conn:
+        if not self.conn and not self.proc:
             return
+
         if not enable_log:
             log_level = context.log_level
             context.log_level = "error"
-        self.conn.close()
-        self.conn = None
+
+        if self.conn:
+            self.conn.close()
+            self.conn = None
+
+        if self.proc:
+            self.proc.close()
+            self.proc = None
+
         if not enable_log:
             context.log_level = log_level
 

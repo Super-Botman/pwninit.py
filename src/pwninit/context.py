@@ -1,5 +1,6 @@
 from pwninit.io import IOContext
 from pwninit.helpers.pwncontext import PwnContext
+from pwn import log
 
 ioctx: IOContext | None = None
 """A global singleton for global method handling IOContext"""

@@ -5,21 +5,21 @@ import re
 
 from pwn import ELF, context, log
 
-from pwninit import IOContext, PwnContext, set_ctx
+from pwninit import IOContext, PwnContext, set_ctx, NC, SSH, Args
 from pwninit.farm import run_farm
 
 _NC_RE  = re.compile(r'^(?P<host>[^:@]*):(?P<port>\d+)$')
 _SSH_RE = re.compile(r'^(?P<user>[^:@]+)(?::(?P<password>[^@]*))?@(?P<host>[^:]+)(?::(?P<port>[^:]+))?(?::(?P<path>.+))?$')
 
-def addr_type(value: str) -> io.SSH | io.NC:
+def addr_type(value: str) -> SSH | NC:
     if m := _SSH_RE.match(value):
         port = m.group("port")
         path = m.group("path") or (port if port and not port.isdigit() else None)
         port = int(port) if port and port.isdigit() else 22
-        return io.SSH(m.group("user"), m.group("host"), m.group("password") or None, port, path)
+        return SSH(m.group("user"), m.group("host"), m.group("password") or None, port, path)
 
     if m := _NC_RE.match(value):
-        return io.NC(m.group("host") or "localhost", int(m.group("port")))
+        return NC(m.group("host") or "localhost", int(m.group("port")))
 
     raise argparse.ArgumentTypeError(
         "Invalid format. Expected 'ip:port', 'user@ip:port', 'user@ip:/path', or 'user:pass@ip:port:/path'."
@@ -138,7 +138,7 @@ def cli() -> int:
     if ns.farm:
         return run_farm(ns, config, exploit)
 
-    args = io.Args(
+    args = Args(
         remote=ns.remote,
         local=ns.local,
         ssl=ns.ssl,
@@ -150,16 +150,14 @@ def cli() -> int:
     )
 
     if (args.local or args.docker) and not args.remote:
-        args.remote = io.NC("localhost", 5000)
+        args.remote = NC("localhost", 5000)
 
-    ctx = IOContext(args, config)
-    if not ctx.connect():
-        return 1
-    set_ctx(ctx)
+    ioctx = IOContext(args, config)
+    set_ctx(ioctx)
 
-    ctx = PwnContext(io.ioctx, config)
-    set_ctx(ctx)
+    pwnctx = PwnContext(ioctx)
+    set_ctx(pwnctx)
 
-    exploit(helpers.pwnctx, io.ioctx)
+    exploit(pwnctx, ioctx)
 
     return 0
