@@ -13,6 +13,7 @@ RESOURCE_FILES = [
     "Dockerfile",
     "libc.so.6",
     "ld-linux-x86-64.so.2",
+    "run"
 ]
 client = docker.from_env()
 

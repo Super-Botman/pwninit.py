@@ -352,12 +352,14 @@ class IOContext:
         elif self.args.remote:
             self.conn = self.__create_remote_connection()
 
-        if is_docker_debug:
-            self.__debug_docker(container)
+        pause()
 
         if not self.conn:
             log.warning("Failed to create process")
             return None
+
+        if is_docker_debug:
+            self.__debug_docker(container)
 
         if not enable_log:
             context.log_level = log_level
