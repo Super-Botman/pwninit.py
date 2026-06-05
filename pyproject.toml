@@ -43,3 +43,4 @@ testpaths = ["tests"]
 filterwarnings = [
     "ignore::DeprecationWarning:pwnlib"
 ]
+timeout = 30

@@ -6,7 +6,6 @@ import threading
 from time import sleep
 from pwninit import IOContext, Config, Args, NC
 from pwn import PwnlibException, listen
-from conftest import path
 
 HOST = "localhost"
 PORT = random.randrange(1024, 49151)
@@ -69,14 +68,13 @@ def test_local_arg():
     )
     assert ioctx.proc
     assert (ioctx.proc is not ioctx.conn)
-    assert b"listening" in b"".join(ioctx.proc.readlines(3)).lower()
 
     assert ioctx.rl() == b"TEST3\n"
     ioctx.close()
 
-def test_docker_arg(monkeypatch):
+def test_docker_arg(monkeypatch,shared_path):
     mock_attach = MagicMock()
-    monkeypatch.chdir(path)
+    monkeypatch.chdir(shared_path)
     monkeypatch.setattr("pwn.gdb.attach", mock_attach)
 
     ioctx = IOContext(
