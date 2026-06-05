@@ -19,10 +19,11 @@ jobs:
         python-version: ['3.12', '3.13', '3.14']
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Ensure Docker Service is Running
+        run: |
+          sudo systemctl start docker
+          timeout 10 sh -c 'until docker info >/dev/null 2>&1; do sleep 1; done'
+          docker version
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -39,4 +40,5 @@ jobs:
       - name: Run tests
         env:
           PYTHONPATH: src
+          DOCKER_HOST: unix:///var/run/docker.sock
         run: pytest
