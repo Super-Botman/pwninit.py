@@ -38,7 +38,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # pip uninstall -y pwninit.py pwninit || true
+          pip uninstall -y pwninit.py pwninit || true
           pip install -e ".[dev]"
 
       - name: Run tests
