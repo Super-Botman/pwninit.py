@@ -8,6 +8,7 @@ from pwnlib.rop.gadgets import Gadget
 
 from pwninit.helpers.utils import u64, u32, upack, encode
 from pwninit.helpers.constants import *
+from pwninit.io import IOContext
 
 class PwnContext:
     """A context class for managing pwntools state, including IO, ELF binaries,

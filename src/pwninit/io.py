@@ -11,7 +11,7 @@ import docker
 from pwn import context, gdb, log, pause, process, remote, ssh, pwnlib
 
 from pwninit.kernel import inject
-import pwninit.helpers.utils as utils
+import pwninit.helpers as helpers
 
 
 @dataclass(frozen=True)
@@ -349,9 +349,9 @@ class IOContext:
 
     def prompt(self, data: str | bytes, **kwargs: Any) -> None:
         """Transmit parameters downstream, adapting automatically to specific prefixes or line endings."""
-        prefix = utils.encode(kwargs.pop("prefix", self.config.prefix))
-        line = utils.encode(kwargs.pop("line", True))
-        data = utils.encode(data)
+        prefix = helpers.encode(kwargs.pop("prefix", self.config.prefix))
+        line = helpers.encode(kwargs.pop("line", True))
+        data = helpers.encode(data)
         r = self.conn
 
         if prefix and line:
@@ -392,7 +392,7 @@ class IOContext:
         elif isinstance(prefix, int):
             return r.recvn(prefix, **kwargs)
 
-        prefix = utils.encode(prefix)
+        prefix = helpers.encode(prefix)
         drop = kwargs.pop("drop", True)
         if line:
             r.recvuntil(prefix, drop=drop, **kwargs)
@@ -430,7 +430,7 @@ class IOContext:
 
     def pow(self) -> None:
         """Examine text contents currently available within pipes to isolate and process computational puzzles."""
-        utils.solve_pow(self.conn.clean())
+        helpers.solve_pow(self.conn.clean())
 
 def _require_ctx() -> IOContext:
     from pwninit.context import ioctx
