@@ -33,6 +33,7 @@ def docker_setup():
     container_id = result.stdout.strip()
     if container_id:
       subprocess.run(["docker", "stop", container_id])
+
     subprocess.run(["docker", "image", "rm", "--force", image_tag])
 
     
