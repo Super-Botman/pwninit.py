@@ -24,11 +24,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Ensure Docker Service is Running
+      - name: Docker diagnostics
         run: |
-          sudo systemctl start docker
-          timeout 10 sh -c 'until docker info >/dev/null 2>&1; do sleep 1; done'
           docker version
+          docker info
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -45,5 +44,4 @@ jobs:
       - name: Run tests
         env:
           PYTHONPATH: src
-          DOCKER_HOST: unix:///var/run/docker.sock
         run: pytest
