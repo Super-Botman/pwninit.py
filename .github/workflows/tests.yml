@@ -19,6 +19,11 @@ jobs:
         python-version: ['3.12', '3.13', '3.14']
 
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Ensure Docker Service is Running
         run: |
           sudo systemctl start docker
