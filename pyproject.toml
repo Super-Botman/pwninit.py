@@ -25,15 +25,21 @@ dependencies = [
   "lz4"
 ]
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-pwninit = ["templates/*"]
-
 [project.scripts]
 pwninit = "pwninit.pwninit:cli"
 run = "pwninit.run:cli"
 
 [project.urls]
 Homepage = "https://github.com/Super-Botman/pwninit.py"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pwninit = ["templates/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning:pwnlib"
+]
