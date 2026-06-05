@@ -72,7 +72,7 @@ def test_local_arg():
     assert ioctx.rl() == b"TEST3\n"
     ioctx.close()
 
-def test_docker_arg(monkeypatch,shared_path):
+def test_docker_arg(monkeypatch, shared_path, docker_setup):
     mock_attach = MagicMock()
     monkeypatch.chdir(shared_path)
     monkeypatch.setattr("pwn.gdb.attach", mock_attach)

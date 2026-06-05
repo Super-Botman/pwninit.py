@@ -211,6 +211,7 @@ class IOContext:
         image_tag = getattr(
             self.config, "docker_image", f"pwninit-{name}:latest"
         ).lower()
+        print("TEST2", image_tag)
 
         container = next((c for c in client.containers.list() if c.image.tags and c.image.tags[-1] == image_tag), None)
 

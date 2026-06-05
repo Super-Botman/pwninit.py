@@ -1,4 +1,5 @@
 import os
+import docker
 import shutil
 import subprocess
 import tempfile
@@ -13,6 +14,7 @@ RESOURCE_FILES = [
     "libc.so.6",
     "ld-linux-x86-64.so.2",
 ]
+client = docker.from_env()
 
 
 def _make_tmp_dir() -> Path:
@@ -41,7 +43,7 @@ def isolated_path():
     shutil.rmtree(p, ignore_errors=True)
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture()
 def docker_setup(shared_path):
     name = shared_path.resolve().name
     image_tag = f"pwninit-{name}:latest".lower()
@@ -49,21 +51,25 @@ def docker_setup(shared_path):
     env = os.environ.copy()
     env["DOCKER_BUILDKIT"] = "1"
 
+    subprocess.run(
+        [
+            "docker",
+            "buildx",
+            "build",
+            "--load",
+            "-t",
+            image_tag,
+            ".",
+        ],
+        cwd=str(shared_path),
+        env=env,
+        check=True,
+    )
+
     try:
-        build = subprocess.run(
-            ["docker", "build", "-t", image_tag, "."],
-            cwd=str(shared_path),
-            env=env,
-            text=True,
-            capture_output=True,
-            check=True,
-        )
-    except subprocess.CalledProcessError as e:
-        print("=== docker build stdout ===")
-        print(e.stdout)
-        print("=== docker build stderr ===")
-        print(e.stderr)
-        raise
+        client.images.get(image_tag)
+    except docker.errors.ImageNotFound:
+        raise RuntimeError(f"Docker image {image_tag} was not built correctly")
 
     yield image_tag
 
