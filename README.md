@@ -1,5 +1,7 @@
 # pwninit
 
+![Tests Status](https://github.com/Super-Botman/pwninit.py/actions/workflows/tests.yml/badge.svg)
+
 A Python toolkit for CTF binary exploitation. Streamline setup, development, and execution of exploits with automated binary analysis, library management, and template generation.
 
 📖 **Full documentation**: [pwninit.0xb0tm4n.org](https://pwninit.0xb0tm4n.org)
@@ -13,11 +15,13 @@ pipx install pwninit.py
 ## Basic Usage Example
 
 Setup the chall:
+
 ```sh
 $ pwninit
 ```
 
 Edit exploit.py:
+
 ```python
 from pwninit import *
 
@@ -36,6 +40,7 @@ def exploit(ctx, io):
 ```
 
 Run the exploit:
+
 ```sh
 $ run
 ```
