@@ -21,18 +21,16 @@ When using [`run`](/cli/intro#run-exploit-execution) command, all the context in
 Initialisation of the context is pretty much the same for [IOContext](io) and [PwnContext](pwncontext), first we need to instantiate the class:
 
 ```py
-from pwninit import Args, Config
-import pwninit.io as io
-import pwninit.helpers as helpers
+from pwninit import Args, Config, IOContext, PwnContext
 
 # This dataclass serv as a glue between argparse.Namespace and custom scripts (1)
-args = io.Args()
+args = Args()
 config = Config(
   chall=['ls']
 )
 
-ioctx = io.IOContext(args, config)
-pwnctx = helpers.PwnContext(ioctx)
+ioctx = IOContext(args, config)
+pwnctx = PwnContext(ioctx)
 ```
 
 1. [`io.Args`](io/#pwninit.io.Args) - argument parser context
