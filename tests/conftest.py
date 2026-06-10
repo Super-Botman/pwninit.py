@@ -1,4 +1,4 @@
-from pwninit import IOContext
+from pwninit import IOContext, Config, Args
 import os
 import docker
 import shutil
@@ -9,7 +9,6 @@ from pathlib import Path
 import pytest
 
 RESOURCES = Path(__file__).parent / "resources"
-TEST_CHALL = RESOURCES / "chall"
 RESOURCE_FILES = [
     "chall",
     "Dockerfile",
@@ -17,6 +16,7 @@ RESOURCE_FILES = [
     "ld-linux-x86-64.so.2",
     "run"
 ]
+
 client = docker.from_env()
 
 
@@ -47,8 +47,14 @@ def isolated_path():
 
 
 @pytest.fixture()
-def iocontext():
-    ioctx = IOContext(Args(), Config(binary=TEST_CHALL))
+def ioctx(shared_path):
+    ioctx = IOContext(
+        Args(),
+        Config(
+            binary = str(shared_path / "chall"),
+            libc = str(shared_path / "libc.so.6")
+        )
+    )
 
     yield ioctx
 
