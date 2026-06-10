@@ -86,8 +86,9 @@ class PwnContext:
 
     @canary.setter
     def canary(self, new_canary: int):
-        self._canary = new_canary
-
+        self._canary = new_canary        
+        
+        
     @property
     def offset(self) -> int | None:
         """Find the buffer overflow offset dynamically by sending a cyclic pattern
@@ -100,12 +101,60 @@ class PwnContext:
             return self._offset
 
         context.delete_corefiles = True
+
+        if not hasattr(self.elf.plt, '__stack_chk_fail'):
+            self.io.sl(cyclic(1000))
+            self.io.poll(block=True)
+            core = self.io.corefile
+            self._offset = cyclic_find(core.fault_addr)
+            log.info(f"offset found: {self._offset}")
+            return self._offset
+
+
+        hook_triggered = threading.Event()
+        session = frida.attach(self.io.proc.pid)
+
+        script_code = f"""
+        var baseAddr = Process.enumerateModules()[0].base;
+        var targetAddr = baseAddr.add("{hex(self.elf.plt['__stack_chk_fail'])}");
+        Interceptor.attach(targetAddr, {{
+            onEnter: function(args) {{
+                send({{
+                    "rbp_val": this.context.rbp
+                }});
+                var abort = Module.findExportByName(null, "abort");
+                new NativeFunction(abort, 'void', [])();
+            }}
+        }});
+        """
+
+        def on_message(message, data):
+            if message['type'] == 'send':
+                payload = message['payload']
+                
+                rbp_val = int(payload['rbp_val'], 16)
+                self.io.poll(block=True)
+                core = self.io.corefile
+                data = u32(core.read(rbp_val, 4))
+                self._offset = cyclic_find(data)+8
+
+                hook_triggered.set()
+
+        script = session.create_script(script_code)
+        script.on('message', on_message)
+        script.load()
+
         self.io.sl(cyclic(1000))
-        self.io.poll(block=True)
-        core = self.io.corefile
-        self._offset = cyclic_find(core.fault_addr)
-        log.info(f"offset found: {self._offset}")
-        return self._offset
+
+        hook_triggered.wait(timeout=5.0)        
+        session.detach()
+
+        if self._offset:
+            log.info(f"offset found: {self._offset}")
+            return self._offset
+        else:
+            log.error("Failed to find offset! (Did __stack_chk_fail trigger?)")
+            return None
 
     @offset.setter
     def offset(self, new_offset: int):
