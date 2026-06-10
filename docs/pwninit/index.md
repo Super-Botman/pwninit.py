@@ -14,7 +14,7 @@
 ## Context setup
 
 **Note**:
-When using [`run`](/cli/intro#run-exploit-execution) command, all the context initialisation is handled by it. This page explains how the lib works, if you want to learn how to use `run` got to [`exploit development`](/cli/exploit-dev).
+When using [`run`](/cli/intro#run-exploit-execution) command, all the context initialisation is handled by it. This page explains how the lib works, if you want to learn how to use `run` got to [`exploit development`](/cli/intro#exploits).
 
 ### Initialisation
 
