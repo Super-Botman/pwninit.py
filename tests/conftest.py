@@ -1,3 +1,4 @@
+from pwninit import IOContext, Config, Args
 import os
 import shutil
 import subprocess
@@ -57,10 +58,14 @@ def isolated_path(tmp_path, monkeypatch):
 
 
 @pytest.fixture()
-def bins(isolated_path):
-    files = ls(isolated_path)
-    process_elf(files)
-    return files
+def ioctx(shared_path):
+    ioctx = IOContext(
+        Args(),
+        Config(
+            binary = str(shared_path / "chall"),
+            libc = str(shared_path / "libc.so.6")
+        )
+    )
 
 
 @pytest.fixture()
