@@ -21,7 +21,8 @@ dependencies = [
   "docker",
   "mako",
   "python-magic",
-  "lz4"
+  "lz4",
+  "frida"
 ]
 
 [project.optional-dependencies]
