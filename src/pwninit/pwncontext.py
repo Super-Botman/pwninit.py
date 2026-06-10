@@ -1,7 +1,9 @@
 import re
 import os
+import frida
+import threading
 
-from pwn import ELF, ROP, asm, context, cyclic, cyclic_find, log, shellcraft, flat
+from pwn import ELF, ROP, asm, context, cyclic, cyclic_find, log, shellcraft, flat, gdb
 from pwnlib.rop.gadgets import Gadget
 
 from pwninit.helpers.utils import u64, upack, encode
