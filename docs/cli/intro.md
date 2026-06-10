@@ -41,9 +41,7 @@ pwninit -p docker -tag 'chall_name'
 `pwninit` supports configuration through `~/.config/pwninit.conf`:
 
 ```ini
-[default]
-author = YourName
-provider = docker
+author="YourName"
 ```
 
 You can also use environment variables:
@@ -65,13 +63,19 @@ run
 run -r target.com:1337
 
 # SSH connection
-run -r user:password@target.com:22
+run -r user:password@target.com:22:/path
+
+# Start the docker built during pwninit
+run -D
 
 # Debug mode with GDB
 run -d
 
+# Debug with GDB inside docker container
+run -D -d
+
 # Debug with custom GDB script
-run -d --gdb-command 'break main'
+run -d -g 'break main'
 
 # System call tracing
 run -s
@@ -81,16 +85,27 @@ run -v
 
 # SSL/TLS connection
 run -r target.com:443 --ssl
+
+# Uses S4Dfarm as a target source
+run -f -u https://farm.example.com -k password123 -r :2371
 ```
 
 **Options:**
 
-- `-r, --remote <addr>` - Remote connection (`ip:port` for nc, `user:pass@ip:port` for SSH)
-- `-d, --debug` - Launch with GDB debugger
-- `-s, --strace` - Run with strace, output saved to `strace.out`
-- `--gdb-command <cmd>` - Execute GDB command on startup (requires `-d`)
-- `-v, --verbose` - Enable verbose logging
-- `--ssl` - Use SSL/TLS for remote connections
+- `-v --verbose` - Enable verbose logging
+- `-r --remote <addr>` - Remote connection (`ip:port` for nc, `user:pass@ip:port:path` for SSH)
+- `-l --local <port> (default 5000)` - Start chall as local process but set conn as a remote connection (to target servers for example)
+- `-S` `--ssl` - Use SSL/TLS for remote connections
+- `-d --debug` - Launch with GDB debugger
+- `-a --attach` - Attach to the process instead of starting with debugger
+- `-D --docker` - Use the image build during pwninit
+- `-g --gdb-command <cmd>` - Execute GDB command on startup (requires `-d` or `-a`)
+- `-s --strace` - Run with strace, output saved to `strace.out`
+- `-f --farm` - Farm mode
+- `-u --url` - Set the url for the farm (require `-f`)
+- `-k --password` - Set the password for the farm (require `-f`)
+- `-t --period` - Set the period for the farm (require `-f`)
+- `-j --jobs` - Set the number of jobs for the farm (require `-f`)
 
 ### Exploits
 
