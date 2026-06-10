@@ -4,9 +4,8 @@ import socket
 import random
 import threading
 import sys
-from time import sleep
 from pwninit import IOContext, Config, Args, NC
-from pwn import PwnlibException, listen
+from pwn import PwnlibException
 
 HOST = "localhost"
 PORT = random.randrange(1024, 49151)
@@ -23,9 +22,9 @@ def echo_serv():
 def test_IOContext_init():
     # Test creation of instances
     with pytest.raises(PwnlibException) as initinfo_empty:
-        ioctx = IOContext(Args(), Config())
+        IOContext(Args(), Config())
     with pytest.raises(PwnlibException) as initinfo_invalid:
-        ioctx = IOContext(Args(), Config(chall="invalid"))
+        IOContext(Args(), Config(chall="invalid"))
 
     assert "Must specify argv or executable" in str(initinfo_empty.value)
     assert "does not exist" in str(initinfo_invalid.value)

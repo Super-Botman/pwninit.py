@@ -1,3 +1,4 @@
+from pwninit import IOContext
 import os
 import docker
 import shutil
@@ -8,6 +9,7 @@ from pathlib import Path
 import pytest
 
 RESOURCES = Path(__file__).parent / "resources"
+TEST_CHALL = RESOURCES / "chall"
 RESOURCE_FILES = [
     "chall",
     "Dockerfile",
@@ -43,6 +45,14 @@ def isolated_path():
 
     shutil.rmtree(p, ignore_errors=True)
 
+
+@pytest.fixture()
+def iocontext():
+    ioctx = IOContext(Args(), Config(binary=TEST_CHALL))
+
+    yield ioctx
+
+    ioctx.close()
 
 @pytest.fixture()
 def docker_setup(shared_path):
