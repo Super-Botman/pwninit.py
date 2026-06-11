@@ -58,14 +58,10 @@ def isolated_path(tmp_path, monkeypatch):
 
 
 @pytest.fixture()
-def ioctx(shared_path):
-    ioctx = IOContext(
-        Args(),
-        Config(
-            binary = str(shared_path / "chall"),
-            libc = str(shared_path / "libc.so.6")
-        )
-    )
+def bins(isolated_path):
+    files = ls(isolated_path)
+    process_elf(files)
+    return files
 
 
 @pytest.fixture()
