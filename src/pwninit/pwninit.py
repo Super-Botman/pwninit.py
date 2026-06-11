@@ -14,7 +14,7 @@ from pwn import ELF, context, libcdb, log, parse_ldd_output
 
 from pwninit.config import config
 from pwninit.kernel import decompress
-from pwninit.plugins import print_plugin_list, run_plugins, Plugin
+from pwninit.plugins import print_plugin_list, run_plugins
 
 QEMU_DEFAULT = [
     "qemu-system-x86_64",
@@ -320,7 +320,6 @@ def patch_run(path: str) -> bool:
 
 def gen_files(path: Path, bins: dict) -> dict:
     templates = Path(os.path.dirname(os.path.realpath(__file__))) / "templates"
-    chall = os.path.basename(path)
     files = {}
 
     checksecs = []
@@ -420,7 +419,6 @@ def write_output_files(files: dict, path: Path) -> bool:
 def split_argv() -> tuple:
     argv = sys.argv[1:]
     provider_args, setup_args, top_args = [], [], []
-    i = 0
     
     provider = -1
     setup = -1
@@ -502,7 +500,7 @@ def cli() -> int:
         return 0
 
     for p in args.provider or []:
-        ret = run_plugins(p, "provide", path)
+        ret = run_plugins(p, "provide", str(path))
         if ret:
             path = ret
 
@@ -512,7 +510,6 @@ def cli() -> int:
         log.info("no binaries found")
         sorted_bins = {"elf": {}, "kernel": [], "archive": [], "shell": []}
 
-    is_kernel = bool(sorted_bins.get("kernel"))
     is_libc = bool(sorted_bins.get("elf", {}).get("libc"))
     if is_libc and not setup_libc_ld(sorted_bins, path):
         return 1 

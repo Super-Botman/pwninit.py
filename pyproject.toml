@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pwninit.py"
-version = "0.1.4"
+version = "0.1.5"
 authors = [
   { name="0xb0tm4n", email="0xb0tm4n@proton.me" },
 ]
@@ -21,13 +21,15 @@ dependencies = [
   "docker",
   "mako",
   "python-magic",
-  "lz4"
+  "lz4",
+  "frida"
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
-    "pytest-timeout>=2.2.0"
+    "pytest-timeout>=2.2.0",
+    "pytest-ordering>=0.6.0"
 ]
 
 [project.scripts]

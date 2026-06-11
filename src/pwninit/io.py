@@ -129,8 +129,8 @@ class IOContext:
         p = log.progress(f"Opening connection to {self.args.remote.host} on port {self.args.remote.port}")
 
         while time.time() < deadline:
-            if io:
-                io.close()
+            if io: io.close()
+
             try:
                 log_level = context.log_level
                 context.log_level = 'error'
@@ -145,7 +145,7 @@ class IOContext:
                     io.close()
                     continue
 
-                io.unrecv(io.recv(timeout=0.5))
+                io.unrecv(io.recv(timeout=0.1))
                 context.log_level = log_level
 
                 p.success("Done")
@@ -153,7 +153,7 @@ class IOContext:
 
             except Exception as e:
                 last_err = e
-                time.sleep(0.1)
+                time.sleep(0.5)
 
         p.failure(f"Could not connect within 5s: {last_err}")
         return None

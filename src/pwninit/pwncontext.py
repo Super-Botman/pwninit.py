@@ -1,12 +1,12 @@
-import math
 import re
 import os
-from typing import NoReturn
+import frida
+import threading
 
-from pwn import ELF, ROP, asm, context, cyclic, cyclic_find, log, shellcraft, flat, unpack, p64, p32, signal
+from pwn import ELF, ROP, asm, context, cyclic, cyclic_find, log, shellcraft, flat, gdb
 from pwnlib.rop.gadgets import Gadget
 
-from pwninit.helpers.utils import u64, u32, upack, encode
+from pwninit.helpers.utils import u64, upack, encode
 from pwninit.helpers.constants import *
 from pwninit.io import IOContext
 
@@ -44,6 +44,8 @@ class PwnContext:
             for lib in (io.config.libs or [])
         ]
 
+        context.binary = self._elf
+
     @property
     def elf(self) -> ELF:
         return self._elf
@@ -63,9 +65,16 @@ class PwnContext:
         Returns:
             int | None: The canary value, or None if not found/applicable.
         """
-        if self._canary: return self._canary
-        if not self.elf.canary: log.warn("no canary in this binary"); return self._canary
-        if not self.io.proc: log.warn("impossible to retrieve canary without local proc"); return self._canary
+
+        if self._canary:
+            return self._canary
+
+        if not self.elf.canary:
+            return self._canary
+
+        if not self.io.proc or self.io.proc.poll():
+            log.warn("impossible to retrieve canary without local proc")
+            return self._canary
 
         auxv = open(f"/proc/{self.io.proc.pid}/auxv", "rb").read()
         word = context.bytes
@@ -73,15 +82,16 @@ class PwnContext:
             a_type = u64(auxv[i : i + word])
             a_val = u64(auxv[i + word : i + 2 * word])
             if a_type == 25:
-                self.canary = u64((b"\x00" + self.io.proc.readmem(a_val + 1, 7)))
+                self.canary = u64((b"\x00" + self.io.proc.leak(a_val + 1, 7)))
                 break
 
         return self._canary
 
     @canary.setter
     def canary(self, new_canary: int):
-        self._canary = new_canary
-
+        self._canary = new_canary        
+        
+        
     @property
     def offset(self) -> int | None:
         """Find the buffer overflow offset dynamically by sending a cyclic pattern
@@ -90,15 +100,64 @@ class PwnContext:
         Returns:
             int | None: The found offset length.
         """
-        if self._offset: return self._offset
+        if self._offset:
+            return self._offset
 
         context.delete_corefiles = True
+
+        if not hasattr(self.elf.plt, '__stack_chk_fail'):
+            self.io.sl(cyclic(1000))
+            self.io.poll(block=True)
+            core = self.io.corefile
+            self._offset = cyclic_find(core.fault_addr)
+            log.info(f"offset found: {self._offset}")
+            return self._offset
+
+
+        hook_triggered = threading.Event()
+        session = frida.attach(self.io.proc.pid)
+
+        script_code = f"""
+        var baseAddr = Process.enumerateModules()[0].base;
+        var targetAddr = baseAddr.add("{hex(self.elf.plt['__stack_chk_fail'])}");
+        Interceptor.attach(targetAddr, {{
+            onEnter: function(args) {{
+                send({{
+                    "rbp_val": this.context.rbp
+                }});
+                var abort = Module.findExportByName(null, "abort");
+                new NativeFunction(abort, 'void', [])();
+            }}
+        }});
+        """
+
+        def on_message(message, data):
+            if message['type'] == 'send':
+                payload = message['payload']
+                
+                rbp_val = int(payload['rbp_val'], 16)
+                self.io.poll(block=True)
+                core = self.io.corefile
+                data = u32(core.read(rbp_val, 4))
+                self._offset = cyclic_find(data)+8
+
+                hook_triggered.set()
+
+        script = session.create_script(script_code)
+        script.on('message', on_message)
+        script.load()
+
         self.io.sl(cyclic(1000))
-        self.io.poll(block=True)
-        core = self.io.corefile
-        self._offset = cyclic_find(core.fault_addr)
-        log.info(f"offset found: {self._offset}")
-        return self._offset
+
+        hook_triggered.wait(timeout=5.0)        
+        session.detach()
+
+        if self._offset:
+            log.info(f"offset found: {self._offset}")
+            return self._offset
+        else:
+            log.error("Failed to find offset! (Did __stack_chk_fail trigger?)")
+            return None
 
     @offset.setter
     def offset(self, new_offset: int):
@@ -108,10 +167,10 @@ class PwnContext:
         if isinstance(symbol, int):
             return symbol
         elif "+" in symbol:
-            func, off = symbol.split("+")
+            func, off = symbol.replace(" ", "").split("+")
             return bin_obj.sym[func] + int(off, 0)
         elif "-" in symbol:
-            func, off = symbol.split("-")
+            func, off = symbol.replace(" ", "").split("-")
             return bin_obj.sym[func] - int(off, 0)
         else:
             return bin_obj.sym[symbol]
@@ -318,9 +377,6 @@ class PwnContext:
         offset_val = self.offset
         canary_val = self.canary
 
-        if opt is None:
-            opt = {}
-
         if canary_val:
             opt |= {offset_val - context.bytes * 2: canary_val}
 
@@ -377,8 +433,6 @@ class PwnContext:
         
             >>> ret2win("win_secret_func", params=[0xdeadbeef, 0xcafebabe])
         """
-        if params is None:
-            params = []
         addr = self.resolve(win)
         payload = self.ropchain({addr: params}, ret)
         return self.bof(payload, **kwargs)
