@@ -42,6 +42,8 @@ class PwnContext:
             for lib in (io.config.libs or [])
         ]
 
+        context.binary = self._elf
+
     @property
     def elf(self) -> ELF:
         return self._elf
@@ -66,7 +68,6 @@ class PwnContext:
             return self._canary
 
         if not self.elf.canary:
-            log.warn("no canary in this binary")
             return self._canary
 
         if not self.io.proc or self.io.proc.poll():

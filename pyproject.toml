@@ -28,7 +28,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
-    "pytest-timeout>=2.2.0"
+    "pytest-timeout>=2.2.0",
+    "pytest-ordering>=9.0.3"
 ]
 
 [project.scripts]

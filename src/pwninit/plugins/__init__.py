@@ -156,7 +156,6 @@ def run_plugins(args: list, role: str, settings: dict|str) -> Any:
     plugin = _resolve(args[0])
     if plugin is None:
         log.error("Plugin '%s' not found" % args[0])
-        return None
 
     parsed = _parse_plugin_args(plugin, args[1:], role)
     if parsed is None:
@@ -168,7 +167,6 @@ def run_plugins(args: list, role: str, settings: dict|str) -> Any:
         return plugin.setup(parsed, settings)
     else:
         log.error("Plugin '%s' has no %s()" % (args[0], role))
-        return None
 
 def _get_infos(dir, source="built-in"):
     seen = {}

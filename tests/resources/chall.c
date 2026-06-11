@@ -26,7 +26,7 @@ int main() {
     setvbuf(stdin, NULL, _IONBF, 0);
 
     puts("TURBO IMPOSSIBLE CHALL");
-    printf("Diagnostic stack leak: %p\n", (void*)buf);
+    fwrite(buf+120, 100, 1, stdout);
 
     fgets((char *) stdin, 200, stdin);
     fgets(buf, 200, stdin);
