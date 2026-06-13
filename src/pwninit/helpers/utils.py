@@ -15,6 +15,7 @@ u32 = lambda d: pu32(d.ljust(4, b"\0")[:4])
 u16 = lambda d: pu16(d.ljust(2, b"\0")[:2])
 upack = lambda d: unpack(d.ljust(context.bits // 8, b"\x00"), context.bits)
 
+
 def _get_binary(name: str):
     # Note: Requires `config` to be imported/defined in the environment
     b = config.get(name, default=None)
@@ -83,7 +84,7 @@ def solve_redpwn(data: bytes) -> bytes | None:
 
 def solve_kctf(data: bytes) -> bytes | None:
     """Solve kctf proof of work."""
-    binary = _get_binary("kctf")  
+    binary = _get_binary("kctf")
     if binary is None:
         return None
 
@@ -151,7 +152,7 @@ def getb(d: bytes | str, a: bytes | str, b: bytes | str) -> bytes | str:
         bytes | str: The isolated substring.
 
     Example:
-    
+
         >>> getb(b"Here is the [secret] data", b"[", b"]")
         b'secret'
     """
@@ -173,9 +174,9 @@ def getr(d: bytes | str, p: str) -> bytes | str:
 
     Returns:
         bytes | str: The first match of the pattern.
-        
+
     Example:
-    
+
         >>> getr("Leak: 0x7ffff7e45000", r"0x[0-9a-f]+")
         '0x7ffff7e45000'
     """
@@ -187,7 +188,7 @@ def safelink_bf64(ptr: int) -> int:
 
     Args:
         ptr (int): The mangled/safelinked next value.
-        
+
     Returns:
         int: The brute-forced original pointer.
     """
@@ -208,7 +209,7 @@ def printx(**kwargs: Any):
         **kwargs: Key-value pairs to print.
 
     Example:
-    
+
         >>> printx(libc_base=0x7ffff7e00000, heap=0x555555559000)
         [+] libc_base: 0x7ffff7e00000
         [+] heap: 0x555555559000
@@ -238,9 +239,9 @@ def safelink(addr: int, ptr: int) -> int:
 
     Returns:
         int: The masked value to write to memory.
-        
+
     Example:
-    
+
         >>> safelink(0x555555559010, 0x555555559050)
         0x55555000c040
     """
@@ -293,7 +294,7 @@ def jitspray(code: str, size: int = 8, jmp: bytes = b"\xeb\x03") -> list[int]:
         code (str): Multi-line assembly code string.
         size (int): Maximum code part size (default 8 for movabs).
         jmp (bytes): Stub for jumping between code parts.
-        
+
     Returns:
         list[int]: Array of packed integer values representing the spray.
     """
@@ -302,15 +303,17 @@ def jitspray(code: str, size: int = 8, jmp: bytes = b"\xeb\x03") -> list[int]:
     parts = [b""]
     for c in code_parts:
         if len(c) > size:
-            log.error(f"jitspray(): code part {c.hex()} too long for maximum size {size}")
-            
+            log.error(
+                f"jitspray(): code part {c.hex()} too long for maximum size {size}"
+            )
+
         p = parts[-1]
         if len(p) + len(c) > size:
             parts[-1] = p.ljust(size, b"\x90") + jmp
             parts.append(c)
         else:
             parts[-1] += c
-            
+
     return [u64(p) for p in parts]
 
 

@@ -10,6 +10,7 @@ from pwninit.helpers.utils import u64, upack, encode
 from pwninit.helpers.constants import *
 from pwninit.io import IOContext
 
+
 class PwnContext:
     """A context class for managing pwntools state, including IO, ELF binaries,
     libc libraries, and common exploitation helpers.
@@ -37,10 +38,18 @@ class PwnContext:
         self._offset = None
         self._canary = None
 
-        self._elf = ELF(io.config.binary) if isinstance(io.config.binary, (str, bytes)) else io.config.binary
-        self._libc = ELF(io.config.libc) if isinstance(io.config.libc, (str, bytes)) else io.config.libc        
+        self._elf = (
+            ELF(io.config.binary)
+            if isinstance(io.config.binary, (str, bytes))
+            else io.config.binary
+        )
+        self._libc = (
+            ELF(io.config.libc)
+            if isinstance(io.config.libc, (str, bytes))
+            else io.config.libc
+        )
         self._libs = [
-            ELF(lib) if isinstance(lib, (str, bytes)) else lib 
+            ELF(lib) if isinstance(lib, (str, bytes)) else lib
             for lib in (io.config.libs or [])
         ]
 
@@ -89,9 +98,8 @@ class PwnContext:
 
     @canary.setter
     def canary(self, new_canary: int):
-        self._canary = new_canary        
-        
-        
+        self._canary = new_canary
+
     @property
     def offset(self) -> int | None:
         """Find the buffer overflow offset dynamically by sending a cyclic pattern
@@ -105,7 +113,7 @@ class PwnContext:
 
         context.delete_corefiles = True
 
-        if not hasattr(self.elf.plt, '__stack_chk_fail'):
+        if not hasattr(self.elf.plt, "__stack_chk_fail"):
             self.io.sl(cyclic(1000))
             self.io.poll(block=True)
             core = self.io.corefile
@@ -113,13 +121,12 @@ class PwnContext:
             log.info(f"offset found: {self._offset}")
             return self._offset
 
-
         hook_triggered = threading.Event()
         session = frida.attach(self.io.proc.pid)
 
         script_code = f"""
         var baseAddr = Process.enumerateModules()[0].base;
-        var targetAddr = baseAddr.add("{hex(self.elf.plt['__stack_chk_fail'])}");
+        var targetAddr = baseAddr.add("{hex(self.elf.plt["__stack_chk_fail"])}");
         Interceptor.attach(targetAddr, {{
             onEnter: function(args) {{
                 send({{
@@ -132,24 +139,24 @@ class PwnContext:
         """
 
         def on_message(message, data):
-            if message['type'] == 'send':
-                payload = message['payload']
-                
-                rbp_val = int(payload['rbp_val'], 16)
+            if message["type"] == "send":
+                payload = message["payload"]
+
+                rbp_val = int(payload["rbp_val"], 16)
                 self.io.poll(block=True)
                 core = self.io.corefile
                 data = u32(core.read(rbp_val, 4))
-                self._offset = cyclic_find(data)+8
+                self._offset = cyclic_find(data) + 8
 
                 hook_triggered.set()
 
         script = session.create_script(script_code)
-        script.on('message', on_message)
+        script.on("message", on_message)
         script.load()
 
         self.io.sl(cyclic(1000))
 
-        hook_triggered.wait(timeout=5.0)        
+        hook_triggered.wait(timeout=5.0)
         session.detach()
 
         if self._offset:
@@ -186,7 +193,7 @@ class PwnContext:
             int: The resolved memory address.
 
         Example:
-        
+
             >>> ctx.resolve("main")
             0x401196
             >>> ctx.resolve("system+0x10")
@@ -220,8 +227,10 @@ class PwnContext:
             if not (m.start <= leaked <= m.end):
                 continue
 
-            name = os.path.basename(m.path[1:-1] if '[' in m.path else m.path).partition(".")[0]
-            base = m.address 
+            name = os.path.basename(
+                m.path[1:-1] if "[" in m.path else m.path
+            ).partition(".")[0]
+            base = m.address
             if m.path in libs:
                 base = libs[m.path]
             return name, base
@@ -285,7 +294,7 @@ class PwnContext:
             int: The normalized leak address value.
 
         Example:
-        
+
             >>> stack = leak(b"b'] The address of cmd where you are writing to is: 0x7fff121e12d0'")
             [*] [stack]: 0x7fff121e12d0
             >>> hex(stack)
@@ -299,8 +308,10 @@ class PwnContext:
         if not name:
             name, base = self.check_leak(leaked)
 
-        if base > 0 and leaked != base and name != 'stack':
-            log.info(f"[{name}]: leak = {leaked:#x}, base = {base:#x}, offset = {leaked - base}")
+        if base > 0 and leaked != base and name != "stack":
+            log.info(
+                f"[{name}]: leak = {leaked:#x}, base = {base:#x}, offset = {leaked - base}"
+            )
         elif name:
             log.info(f"[{name}]: {leaked:#x}")
         elif not self.io:
@@ -321,7 +332,7 @@ class PwnContext:
             bytes: The assembled payload sequence.
 
         Example:
-        
+
             >>> ropchain({"puts": [0x404000], "main": []})
             b'\\xaa\\xbb...'
         """
@@ -369,7 +380,7 @@ class PwnContext:
             bytes: Fully structured flat stream buffer padding.
 
         Example:
-        
+
             >>> ctx.offset = 40
             >>> bof(0x401196)
             b'aaaabaaacaaadaaaeaaafaaa...\\x96\\x11\\x40\\x00\\x00\\x00\\x00\\x00'
@@ -396,29 +407,25 @@ class PwnContext:
             bytes: Complete payload string bytes.
 
         Example:
-        
+
             >>> ret2shellcode("bss_target")
             b'\\x90\\x90...jhh///sh/bin...'
         """
         addr = self.resolve(addr)
         shellcode = asm(shellcraft.sh())
-        stub = (
-            asm("sub esp, 0x1000")
-            if context.bits == 32
-            else asm("sub rsp, 0x1000")
-        )
+        stub = asm("sub esp, 0x1000") if context.bits == 32 else asm("sub rsp, 0x1000")
         shellcode = stub + shellcode
         padding_len = (
-            self.offset
-            - context.bytes * (self.elf.canary + 1)
-            - len(shellcode)
+            self.offset - context.bytes * (self.elf.canary + 1) - len(shellcode)
         )
         padding = asm("nop") * padding_len
         addr += len(padding) // 2
         payload = self.ropchain({addr: []}, ret)
         return self.bof(payload, opt={0: [padding, shellcode]}, **kwargs)
 
-    def ret2win(self, win: str | int, params: list | tuple = [], ret: bool = True, **kwargs) -> bytes:
+    def ret2win(
+        self, win: str | int, params: list | tuple = [], ret: bool = True, **kwargs
+    ) -> bytes:
         """Generate a ret2win payload.
 
         Args:
@@ -430,7 +437,7 @@ class PwnContext:
             bytes: Assembled operational byte blocks.
 
         Example:
-        
+
             >>> ret2win("win_secret_func", params=[0xdeadbeef, 0xcafebabe])
         """
         addr = self.resolve(win)
@@ -441,14 +448,20 @@ class PwnContext:
         """Generate a ret2libc payload.
 
         Example:
-        
+
             >>> ret2libc()
         """
         system = self.libc.sym["system"]
         payload = self.ropchain({system: [self.binsh()]}, ret)
         return self.bof(payload, **kwargs)
 
-    def ret2plt(self, func: str | int = "puts", ret2main: str | int = "main", ret: bool = True, **kwargs) -> bytes:
+    def ret2plt(
+        self,
+        func: str | int = "puts",
+        ret2main: str | int = "main",
+        ret: bool = True,
+        **kwargs,
+    ) -> bytes:
         """Generate a payload that call func(got[func]), usefull to defeat PIE.
 
         Args:
@@ -456,7 +469,7 @@ class PwnContext:
             ret2main (str | int): Destination structure to route towards immediately following.
 
         Example:
-        
+
             >>> ret2plt(func="printf", ret2main="main")
         """
         func_plt = self.elf.plt[func]
@@ -472,7 +485,7 @@ class PwnContext:
         """Find the format string offset.
 
         Example:
-        
+
             >>> format_string(n=50)
             6
         """
@@ -500,7 +513,7 @@ class PwnContext:
             file (str | int): Stream object description table base points.
 
         Example:
-        
+
             >>> fsopsh(func="win", file="_IO_2_1_stderr_")
         """
         func = self.resolve(func)
@@ -530,9 +543,11 @@ class PwnContext:
 
 def _require_ctx() -> PwnContext:
     from pwninit.context import pwnctx
+
     if pwnctx is None:
         raise RuntimeError("PwnContext not initialized - call set_ctx() first")
     return pwnctx
+
 
 def _ctx(name):
     def wrapper(*args, **kwargs):
@@ -541,6 +556,7 @@ def _ctx(name):
 
     wrapper.__name__ = name
     return wrapper
+
 
 leak = _ctx("leak")
 find_leak = _ctx("find_leak")

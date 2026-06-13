@@ -51,7 +51,7 @@ class SSH:
 @dataclass
 class Args:
     """IO connection parameters
-    
+
     Attributes:
         remote (SSH | NC | None): Remote target as NC (ip:port) or SSH (user:pass@ip:port). ``None`` runs locally.
         local (bool): Spawn the challenge as a local server before connecting.
@@ -62,6 +62,7 @@ class Args:
         gdb_cmd (str | None): GDB script passed on startup. Requires ``debug`` or ``attach``.
         strace (bool): Run under strace, writing output to ``strace.out``.
     """
+
     remote: SSH | NC | None = None
     local: bool = False
     ssl: bool = False
@@ -70,6 +71,7 @@ class Args:
     attach: bool = False
     gdb_cmd: str | None = None
     strace: bool = False
+
 
 class IOContext:
     """A context wrapper class managing multi-tier execution pipes spanning local
@@ -97,15 +99,15 @@ class IOContext:
         Args:
             args (Args): Parsed command-line execution and environment flags.
             config (Any): Workspace configuration mapping binaries, files, and environment paths.
-            proc (pwnlib.tubes.process.process | None, optional): An active local target 
+            proc (pwnlib.tubes.process.process | None, optional): An active local target
                 process instance. Defaults to None.
-            conn (pwnlib.tubes.tube | None, optional): An active communication channel 
+            conn (pwnlib.tubes.tube | None, optional): An active communication channel
                 (e.g., remote socket, SSH process). Defaults to None.
-            ssh_conn (pwnlib.tubes.ssh | None, optional): An active raw pwntools SSH context 
+            ssh_conn (pwnlib.tubes.ssh | None, optional): An active raw pwntools SSH context
                 session handle. Defaults to None.
 
         Side Effects:
-            Triggers `self.connect()` during initialization to immediately evaluate environment 
+            Triggers `self.connect()` during initialization to immediately evaluate environment
             arguments and bind to the correct communication pipeline.
         """
         self.args = args
@@ -126,14 +128,17 @@ class IOContext:
         last_err = None
         io = None
 
-        p = log.progress(f"Opening connection to {self.args.remote.host} on port {self.args.remote.port}")
+        p = log.progress(
+            f"Opening connection to {self.args.remote.host} on port {self.args.remote.port}"
+        )
 
         while time.time() < deadline:
-            if io: io.close()
+            if io:
+                io.close()
 
             try:
                 log_level = context.log_level
-                context.log_level = 'error'
+                context.log_level = "error"
                 io = remote(
                     self.args.remote.host,
                     self.args.remote.port,
@@ -169,22 +174,16 @@ class IOContext:
     def __create_ssh_process(self) -> Any:
         if self.args.debug:
             return gdb.debug(
-                self.config.chall,
-                ssh=self.ssh_conn,
-                cwd=self.args.remote.path
+                self.config.chall, ssh=self.ssh_conn, cwd=self.args.remote.path
             )
 
         return self.ssh_conn.process(
-            self.config.chall,
-            env=self.config.env,
-            cwd=self.args.remote.path
+            self.config.chall, env=self.config.env, cwd=self.args.remote.path
         )
 
     def __create_kernel_process(self) -> Any:
         status = log.progress("compiling exploit")
-        subprocess.run(
-            ["make"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
+        subprocess.run(["make"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         status.success("done")
 
         status = log.progress("injecting exploit")
@@ -249,7 +248,14 @@ class IOContext:
                 "Build step likely failed or was not loaded (--load missing)."
             )
 
-        container = next((c for c in client.containers.list() if c.image.tags and c.image.tags[-1] == image_tag), None)
+        container = next(
+            (
+                c
+                for c in client.containers.list()
+                if c.image.tags and c.image.tags[-1] == image_tag
+            ),
+            None,
+        )
 
         if container:
             if container.status != "running":
@@ -261,13 +267,11 @@ class IOContext:
         container = client.containers.run(
             image_tag,
             pid_mode="host",
-            ports={
-                f"{self.args.remote.port}/tcp": self.args.remote.port
-            },
+            ports={f"{self.args.remote.port}/tcp": self.args.remote.port},
             privileged=True,
             detach=True,
             tty=True,
-            stdin_open=True
+            stdin_open=True,
         )
 
         for _ in range(50):
@@ -278,10 +282,7 @@ class IOContext:
 
         logs = container.logs().decode(errors="ignore")
 
-        raise RuntimeError(
-            f"Container failed to start properly.\nLogs:\n{logs}"
-        )
-
+        raise RuntimeError(f"Container failed to start properly.\nLogs:\n{logs}")
 
     def __docker_get_bin_pid(self, top: dict) -> int | None:
         binary_name = ""
@@ -294,7 +295,7 @@ class IOContext:
             if self.config.binary in cmd:
                 return int(pid)
             elif "socat" in cmd:
-                match = re.search(r'(?i)exec:([^,\s]+)', cmd)
+                match = re.search(r"(?i)exec:([^,\s]+)", cmd)
                 if match:
                     binary_name = match.group(1)
             elif binary_name == cmd or binary_name == Path(cmd).name:
@@ -311,7 +312,6 @@ class IOContext:
 
         gdb.attach(pid, exe=self.config.binary)
 
-        
     def connect(self, enable_log: bool = True) -> "IOContext | None":
         """Establish connection bindings matching active environment arguments.
 
@@ -331,17 +331,13 @@ class IOContext:
         if self.ssh_conn:
             return self.__create_ssh_process()
 
-        is_local_process = not self.args.remote or (
-            self.args.local and not self.proc
-        )
-        is_docker_debug = self.args.docker and (
-            self.args.debug or self.args.attach
-        )
+        is_local_process = not self.args.remote or (self.args.local and not self.proc)
+        is_docker_debug = self.args.docker and (self.args.debug or self.args.attach)
         is_ssh = isinstance(self.args.remote, SSH)
 
         if is_local_process:
             self.conn = self.proc = self.__create_local_process()
-            
+
         if self.args.docker:
             container = self.__launch_docker()
 
@@ -473,8 +469,10 @@ class IOContext:
         """Examine text contents currently available within pipes to isolate and process computational puzzles."""
         helpers.solve_pow(self.conn.clean())
 
+
 def _require_ctx() -> IOContext:
     from pwninit.context import ioctx
+
     if ioctx is None:
         raise RuntimeError("IOContext not initialized - call set_ctx() first")
     return ioctx
@@ -514,7 +512,7 @@ def connect(
     default: bool = True,
 ) -> IOContext | None:
     """Instantiate a new IOContext connection
-    
+
     Args:
         args (argparse.Namespace | None): Args to pass to IOContext (default keep the actual args)
         config (Config | None): Config to pass to IOContext (default keep the actual config)
@@ -522,7 +520,7 @@ def connect(
 
     Returns:
         IOContext | None: Active IOContext instance
-    """    
+    """
     if not args or not config:
         ctx = _require_ctx()
 
@@ -532,6 +530,6 @@ def connect(
     io = IOContext(args, config)
     if default:
         from pwninit.context import set_ctx
+
         set_ctx(io)
     return io
-
