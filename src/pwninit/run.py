@@ -8,15 +8,20 @@ from pwn import ELF, context, log
 from pwninit import IOContext, PwnContext, set_ctx, NC, SSH, Args
 from pwninit.farm import run_farm
 
-_NC_RE  = re.compile(r'^(?P<host>[^:@]*):(?P<port>\d+)$')
-_SSH_RE = re.compile(r'^(?P<user>[^:@]+)(?::(?P<password>[^@]*))?@(?P<host>[^:]+)(?::(?P<port>[^:]+))?(?::(?P<path>.+))?$')
+_NC_RE = re.compile(r"^(?P<host>[^:@]*):(?P<port>\d+)$")
+_SSH_RE = re.compile(
+    r"^(?P<user>[^:@]+)(?::(?P<password>[^@]*))?@(?P<host>[^:]+)(?::(?P<port>[^:]+))?(?::(?P<path>.+))?$"
+)
+
 
 def addr_type(value: str) -> SSH | NC:
     if m := _SSH_RE.match(value):
         port = m.group("port")
         path = m.group("path") or (port if port and not port.isdigit() else None)
         port = int(port) if port and port.isdigit() else 22
-        return SSH(m.group("user"), m.group("host"), m.group("password") or None, port, path)
+        return SSH(
+            m.group("user"), m.group("host"), m.group("password") or None, port, path
+        )
 
     if m := _NC_RE.match(value):
         return NC(m.group("host") or "localhost", int(m.group("port")))
@@ -24,6 +29,7 @@ def addr_type(value: str) -> SSH | NC:
     raise argparse.ArgumentTypeError(
         "Invalid format. Expected 'ip:port', 'user@ip:port', 'user@ip:/path', or 'user:pass@ip:port:/path'."
     )
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Runner for pwn exploits.")
@@ -97,7 +103,8 @@ def parse_args() -> argparse.Namespace:
 
     return ns
 
-def get_exploit() -> tuple:
+
+def get_exploit_setup() -> tuple:
     spec = importlib.util.spec_from_file_location("exploit", "exploit.py")
     mod = importlib.util.module_from_spec(spec)
 
@@ -105,13 +112,16 @@ def get_exploit() -> tuple:
         spec.loader.exec_module(mod)
         from pwninit import config
     except FileNotFoundError:
-        return None, None
+        return None, None, None
 
-    return getattr(mod, "exploit", None), config
-    
+    exploit = getattr(mod, "exploit", None)
+    setup = getattr(mod, "setup", None)
+    return setup, exploit, config
+
+
 def cli() -> int:
     ns = parse_args()
-    exploit, config = get_exploit()
+    setup, exploit, config = get_exploit_setup()
     context.log_level = "DEBUG" if ns.verbose else "INFO"
 
     if not exploit:
@@ -130,7 +140,7 @@ def cli() -> int:
         context.binary = ELF(config.binary) if config.binary else None
 
     if context.binary:
-        libc = ELF(config.libc) if config.libc else context.binary.libc
+        config.libc = ELF(config.libc) if config.libc else context.binary.libc
 
     if config.libs:
         config.libs = [ELF(l) for l in config.libs]
@@ -151,6 +161,9 @@ def cli() -> int:
 
     if (args.local or args.docker) and not args.remote:
         args.remote = NC("localhost", 5000)
+
+    if setup:
+        setup(args, config)
 
     ioctx = IOContext(args, config)
     set_ctx(ioctx)

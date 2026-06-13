@@ -18,12 +18,19 @@ from pwninit.plugins import print_plugin_list, run_plugins
 
 QEMU_DEFAULT = [
     "qemu-system-x86_64",
-    "-no-reboot", "-cpu", "max",
-    "-net", "none",
-    "-serial", "mon:stdio",
-    "-display", "none",
-    "-monitor", "none",
-    "-append", "console=ttyS0",
+    "-no-reboot",
+    "-cpu",
+    "max",
+    "-net",
+    "none",
+    "-serial",
+    "mon:stdio",
+    "-display",
+    "none",
+    "-monitor",
+    "none",
+    "-append",
+    "console=ttyS0",
 ]
 
 ARCHIVE_MIMES = {
@@ -157,6 +164,7 @@ def sort_bins(files: dict) -> dict:
 
     return bins
 
+
 def run_command(cmd: str, args: list, cwd=None) -> tuple:
     args = [cmd] + args
     try:
@@ -166,19 +174,22 @@ def run_command(cmd: str, args: list, cwd=None) -> tuple:
 
     return proc.stdout, proc.stderr
 
+
 def process_elf(files: dict):
     files["elf"] = sort_bins(files)
     for key, val in files["elf"].items():
         if val:
             log.success("%s: %s" % (key, ", ".join(val)))
-    
+
+
 def process_kernel(files: dict):
     for file in files["kernel"]:
         if not os.path.isfile(f"{file}.elf"):
             status = log.progress(f"converting {file} to elf")
             run_command("vmlinux-to-elf", [file, f"{file}.elf"])
             status.success("done")
-    
+
+
 def process_binaries(path: Path) -> dict | None:
     files = ls(path)
 
@@ -197,7 +208,9 @@ def process_binaries(path: Path) -> dict | None:
 def fetch_libs(bins: dict) -> bool:
     chall = bins["challs"][0]
     ldd_out, _ = run_command("ldd", [chall])
-    needed = set(os.path.basename(p) for p in parse_ldd_output(ldd_out) if 'libc.so.6' not in p)
+    needed = set(
+        os.path.basename(p) for p in parse_ldd_output(ldd_out) if "libc.so.6" not in p
+    )
     need_ld = not bins["ld"]
 
     libc = bins["libc"][0]
@@ -205,9 +218,7 @@ def fetch_libs(bins: dict) -> bool:
         os.path.basename(l) for l in bins["libs"] + bins["ld"] + bins["libc"]
     )
 
-    missing = set(
-        n for n in needed if n not in blacklist
-    )
+    missing = set(n for n in needed if n not in blacklist)
 
     if not missing:
         return True
@@ -224,7 +235,7 @@ def fetch_libs(bins: dict) -> bool:
         if not f.is_file():
             continue
 
-        if f.name in blacklist and 'libc.so.6' not in f.name:
+        if f.name in blacklist and "libc.so.6" not in f.name:
             log.info(f"skipping {f.name} (already present)")
             continue
 
@@ -263,12 +274,14 @@ def patch_elf(bins: dict):
 def open_file(path: Path) -> None | typing.IO:
     op = True
     if path.is_file():
-        op = input(f"Do you want to overwrite {path.name}? [Y,n]: ").lower() != 'n'
+        op = input(f"Do you want to overwrite {path.name}? [Y,n]: ").lower() != "n"
 
     return open(path, "w") if op else None
 
+
 def relpath(files, type) -> None | str:
     return "./" + os.path.basename(files[type][0]) if files.get(type) else None
+
 
 def patch_run(path: str) -> bool:
     with open(path, "r") as f:
@@ -348,7 +361,7 @@ def gen_files(path: Path, bins: dict) -> dict:
     files["exploit.py"] = Template(filename=str(templates / "exploit.py")).render(
         binary=relpath(bins["elf"], "challs"),
         libc=relpath(bins["elf"], "libc"),
-        libs=["./"+os.path.basename(l) for l in bins["elf"]["libs"]],
+        libs=["./" + os.path.basename(l) for l in bins["elf"]["libs"]],
         archive=archive,
         kernel=kernel,
         qemu=qemu,
@@ -378,7 +391,7 @@ def setup_libc_ld(bins: dict, path: Path) -> bool:
     sorted_bins = bins["elf"]
     if not sorted_bins["libc"]:
         return False
-    
+
     p = log.progress("fetching libs")
     fetch_ok = fetch_libs(sorted_bins)
 
@@ -391,7 +404,7 @@ def setup_libc_ld(bins: dict, path: Path) -> bool:
         p.success("done")
     else:
         p.success("done (ld already present)")
-    
+
     patch_elf(sorted_bins)
 
     p = log.progress("unstriping libs")
@@ -419,11 +432,14 @@ def write_output_files(files: dict, path: Path) -> bool:
 def split_argv() -> tuple:
     argv = sys.argv[1:]
     provider_args, setup_args, top_args = [], [], []
-    
+
     provider = -1
     setup = -1
     for arg in argv:
-        if arg in ("-p", "--provider", ):
+        if arg in (
+            "-p",
+            "--provider",
+        ):
             provider += 1
             provider_args.append([])
             continue
@@ -467,13 +483,14 @@ def parse_args() -> argparse.Namespace:
     args.setup = setup
     return args
 
-def build_docker(path: Path):    
+
+def build_docker(path: Path):
     if not (path / "Dockerfile").exists():
         return
 
-    if input(f"Do you want to build the docker image ? [y,N]: ").lower() != 'y':
+    if input(f"Do you want to build the docker image ? [y,N]: ").lower() != "y":
         return
-    
+
     name = path.resolve().name
     image_tag = f"pwninit-{name}:latest".lower()
     p = log.progress("Building docker image")
@@ -512,7 +529,7 @@ def cli() -> int:
 
     is_libc = bool(sorted_bins.get("elf", {}).get("libc"))
     if is_libc and not setup_libc_ld(sorted_bins, path):
-        return 1 
+        return 1
 
     build_docker(path)
 

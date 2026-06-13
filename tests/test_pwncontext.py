@@ -25,22 +25,22 @@ def test_init(ioctx):
     ioctx.config.binary = ELF(ioctx.config.binary)
     ioctx.config.libc = ELF(ioctx.config.libc)
     ctx_preloaded = PwnContext(ioctx)
-    
+
     assert isinstance(ctx_preloaded.elf, ELF)
     assert isinstance(ctx_preloaded.libc, ELF)
 
 
 def test_canary(pwnctx, caplog):
     caplog.set_level(logging.INFO)
-    
-    pwnctx.canary = 0xdeadbeef
-    assert pwnctx.canary == 0xdeadbeef
+
+    pwnctx.canary = 0xDEADBEEF
+    assert pwnctx.canary == 0xDEADBEEF
 
 
 def test_resolve(pwnctx, caplog):
     # Dynamically grab 'main' offset to remain compiler and build-agnostic
-    main_off = pwnctx.elf.symbols['main']
-    
+    main_off = pwnctx.elf.symbols["main"]
+
     assert pwnctx.resolve(0x401000) == 0x401000
     assert pwnctx.resolve("main") == main_off
     assert pwnctx.resolve("main+0x10") == main_off + 0x10
@@ -54,24 +54,28 @@ def test_resolve(pwnctx, caplog):
 
 def test_check_and_find_leak(pwnctx, ioctx):
     pwnctx._canary = 0x0011223344556677
-    
+
     ioctx.proc = None
     assert pwnctx.check_leak(0x401000) == (None, None)
-    
+
     # Restore mock process & memory mapping regions
     ioctx.proc = MagicMock()
-    ioctx.maps = MagicMock(return_value=[
-        MagicMock(path="/usr/lib/libc.so.6", start=0x7ffff7a00000, end=0x7ffff7bc0000),
-        MagicMock(path="/challenge/binary", start=0x400000, end=0x402000)
-    ])
+    ioctx.maps = MagicMock(
+        return_value=[
+            MagicMock(
+                path="/usr/lib/libc.so.6", start=0x7FFFF7A00000, end=0x7FFFF7BC0000
+            ),
+            MagicMock(path="/challenge/binary", start=0x400000, end=0x402000),
+        ]
+    )
 
     assert pwnctx.check_leak(0x0011223344556677) == ("canary", 0x0011223344556677)
 
-    leak_type, _ = pwnctx.check_leak(0x7ffff7a15000)
+    leak_type, _ = pwnctx.check_leak(0x7FFFF7A15000)
     assert leak_type == "libc"
 
     raw_buffer = b"Data received: 0x7ffff7a15000\n"
-    assert pwnctx.find_leak(raw_buffer) == 0x7ffff7a15000
+    assert pwnctx.find_leak(raw_buffer) == 0x7FFFF7A15000
 
 
 def test_ropchain(pwnctx):
@@ -97,8 +101,8 @@ def test_bof_payload_generation(pwnctx):
 @pytest.mark.skipif(sys.platform == "linux", reason="broken on CI")
 def test_payloads(pwnctx, ioctx, monkeypatch):
     pwnctx.offset = 120
-    ioctx.sl('')
-    ioctx.sl(pwnctx.ret2win('win', [0xdeadbeef, 0xcafebabe]))
+    ioctx.sl("")
+    ioctx.sl(pwnctx.ret2win("win", [0xDEADBEEF, 0xCAFEBABE]))
     assert b"SUCCESS" in ioctx.ra()
 
     ioctx.reconnect()
@@ -106,8 +110,8 @@ def test_payloads(pwnctx, ioctx, monkeypatch):
     l = ioctx.recv()
     pwnctx.libc.address = pwnctx.leak(l[23:29], 158631)
     _ = pwnctx.leak(l[31:37])
-    
-    ioctx.sl('')
+
+    ioctx.sl("")
     ioctx.sl(pwnctx.ret2libc())
 
     # Feed commands to standard input to satisfy interactive loop without hanging
@@ -115,4 +119,6 @@ def test_payloads(pwnctx, ioctx, monkeypatch):
     try:
         ioctx.itrv()
     except Exception as exc:
-        LOGGER.warning(f"Interactive cycle dropped or unsupported by terminal environment: {exc}")
+        LOGGER.warning(
+            f"Interactive cycle dropped or unsupported by terminal environment: {exc}"
+        )

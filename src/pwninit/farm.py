@@ -231,8 +231,8 @@ def run_farm(args, config, exploit):
 
     try:
         farm_config = get_farm_config(args)
-        log.info(f'Flag format: {farm_config["FLAG_FORMAT"]}')
-        log.info(f'Flag lifetime: {farm_config["FLAG_LIFETIME"]}')
+        log.info(f"Flag format: {farm_config['FLAG_FORMAT']}")
+        log.info(f"Flag lifetime: {farm_config['FLAG_LIFETIME']}")
         if not args.period:
             args.period = farm_config["FLAG_LIFETIME"]
         else:

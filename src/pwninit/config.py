@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from pwn import log
 
+
 class Config:
     def __init__(self):
         self.config_file = Path.home() / ".config" / "pwninit.conf"

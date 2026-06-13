@@ -8,11 +8,13 @@ from pwn import PwnlibException
 
 HOST = "localhost"
 
+
 @pytest.fixture()
 def port():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((HOST, 0))
         return s.getsockname()[1]
+
 
 @pytest.fixture()
 def echo_server():
@@ -36,9 +38,9 @@ def echo_server():
 
         t = threading.Thread(target=run_server)
         t.start()
-        
+
         yield host, port
-        
+
         stop_event.set()
         t.join()
 
@@ -53,7 +55,7 @@ def test_IOContext_init():
 def test_connect(echo_server):
     ioctx = IOContext(Args(), Config(chall="ls"))
 
-    assert ioctx.recv().endswith(b'\n')
+    assert ioctx.recv().endswith(b"\n")
     with pytest.raises(EOFError):
         ioctx.recv(timeout=0.2)
     ioctx.close()
@@ -85,7 +87,7 @@ def test_local_arg(port):
     )
     ioctx = IOContext(
         Args(remote=NC(HOST, port), local=True),
-        Config(chall=["python3", "-c", python_listener])
+        Config(chall=["python3", "-c", python_listener]),
     )
     assert ioctx.proc
     assert ioctx.proc is not ioctx.conn
@@ -101,7 +103,7 @@ def test_docker_arg(monkeypatch, shared_path, docker_setup):
 
     ioctx = IOContext(
         Args(docker=True, remote=NC("localhost", 5000), debug=True),
-        Config(binary="chall", docker_bin="run")
+        Config(binary="chall", docker_bin="run"),
     )
     mock_attach.assert_called_once()
     assert b"TEST4" in ioctx.rl()

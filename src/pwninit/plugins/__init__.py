@@ -76,6 +76,7 @@ class Plugin:
         """
         return type(self).setup is not Plugin.setup
 
+
 def arg(name: str, **kwargs: Any) -> dict:
     """
     Helper function to define a plugin argument.
@@ -89,7 +90,8 @@ def arg(name: str, **kwargs: Any) -> dict:
     """
     return {"name": name, **kwargs}
 
-def _load_plugin(name: str, path: Path) -> types.ModuleType|None:
+
+def _load_plugin(name: str, path: Path) -> types.ModuleType | None:
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
         return None
@@ -141,7 +143,7 @@ def _parse_plugin_args(plugin, raw_args, role):
         return None
 
 
-def run_plugins(args: list, role: str, settings: dict|str) -> Any:
+def run_plugins(args: list, role: str, settings: dict | str) -> Any:
     """
     Run a plugin with the specified role and arguments.
 
@@ -167,6 +169,7 @@ def run_plugins(args: list, role: str, settings: dict|str) -> Any:
         return plugin.setup(parsed, settings)
     else:
         log.error("Plugin '%s' has no %s()" % (args[0], role))
+
 
 def _get_infos(dir, source="built-in"):
     seen = {}
@@ -238,7 +241,7 @@ def _build_parser(plugin, role):
     return parser
 
 
-def _format_arg(a:dict) -> str:
+def _format_arg(a: dict) -> str:
     a = dict(a)
     name = a.get("name", "?")
     short = a.get("short", "")
@@ -252,6 +255,7 @@ def _format_arg(a:dict) -> str:
     if default is not None:
         parts += " (default: %s)" % default
     return parts
+
 
 def print_plugin_list() -> None:
     """

@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "pwninit.py"
@@ -39,11 +39,8 @@ run = "pwninit.run:cli"
 [project.urls]
 Homepage = "https://github.com/Super-Botman/pwninit.py"
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-pwninit = ["templates/*"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/pwninit"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -51,3 +48,10 @@ filterwarnings = [
     "ignore::DeprecationWarning:pwnlib"
 ]
 timeout = 60
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-timeout>=2.2.0",
+    "pytest-ordering>=0.6.0"
+]

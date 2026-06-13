@@ -2,11 +2,9 @@ import pytest
 from pwn import PwnlibException
 from pwninit import set_ctx, IOContext, Args, Config, PwnContext, rl, sl, binsh, close
 
+
 def test_set_ctx(shared_path):
-    conf = Config(
-        binary="/bin/sh",
-        libc=f"{shared_path}/libc.so.6"
-    )
+    conf = Config(binary="/bin/sh", libc=f"{shared_path}/libc.so.6")
     set_ctx(IOContext(Args(), conf))
     from pwninit.context import ioctx, pwnctx
 

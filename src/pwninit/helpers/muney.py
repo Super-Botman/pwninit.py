@@ -2,10 +2,11 @@ from pwn import ELF, flat
 from pwninit import u32
 from .constants import *
 
+
 class HouseOfMuney:
     """Exploitation helper for the House of Muney technique.
-    
-    This class facilitates dynamic symbol table (`.dynsym`) rewriting 
+
+    This class facilitates dynamic symbol table (`.dynsym`) rewriting
     to hijack function resolution in dynamically linked ELF binaries.
     """
 
@@ -74,7 +75,7 @@ class HouseOfMuney:
         sym["st_name"] = idx
         sym["st_value"] = offset
         # Note: STT_GNU_IFUNC must be available in your local scope/constants
-        sym["st_info"]["type"] = STT_GNU_IFUNC 
+        sym["st_info"]["type"] = STT_GNU_IFUNC
         self.set_sym(name, sym)
         self.write(self.strtab() + idx, name)
         self.write(self.strtab() + idx + len(name), b"\0")
@@ -101,10 +102,10 @@ class HouseOfMuney:
             data = data.encode()
         elif not isinstance(data, bytes):
             raise ValueError("Data must be bytes or str")
-            
+
         if addr < 0 or addr + len(data) > len(self):
             raise IndexError("Write out of bounds")
-            
+
         self.payload = self.payload[:addr] + data + self.payload[addr + len(data) :]
 
     def read(self, addr: int, size: int) -> bytes:
@@ -121,4 +122,3 @@ class HouseOfMuney:
 
     def __bytes__(self):
         return self.payload
-

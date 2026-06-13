@@ -7,11 +7,12 @@ from types import SimpleNamespace
 
 config = None
 
+
 class Config(SimpleNamespace):
     """A configuration container for exploit development and CTF challenges.
 
     Inherits from `SimpleNamespace` to allow attribute-style access (e.g., `config.binary`).
-    Upon instantiation, it automatically updates a global `config` variable to point 
+    Upon instantiation, it automatically updates a global `config` variable to point
     to the latest instance, allowing global access to the configuration state.
 
     Attributes:
@@ -25,6 +26,7 @@ class Config(SimpleNamespace):
         prefix (str): A prefix string used for io interaction.
         **kwargs: Arbitrary keyword arguments dynamically attached as attributes, can be used by anything.
     """
+
     def __init__(
         self,
         binary: ELF | str | None = None,
@@ -34,7 +36,7 @@ class Config(SimpleNamespace):
         env: dict = {},
         archive: str = "",
         kernel: str = "",
-        prefix: str ="",
+        prefix: str = "",
         **kwargs,
     ):
         global config

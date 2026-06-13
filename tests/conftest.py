@@ -10,13 +10,7 @@ from pwninit import IOContext, Config, Args
 from pwninit.pwninit import process_elf, ls
 
 RESOURCES = Path(__file__).parent / "resources"
-RESOURCE_FILES = [
-    "chall",
-    "Dockerfile",
-    "libc.so.6",
-    "ld-linux-x86-64.so.2",
-    "run"
-]
+RESOURCE_FILES = ["chall", "Dockerfile", "libc.so.6", "ld-linux-x86-64.so.2", "run"]
 
 client = docker.from_env()
 
@@ -28,6 +22,7 @@ collect_order = [
     "tests/test_pwninit.py",
 ]
 
+
 def pytest_collection_modifyitems(session, config, items):
     def sort_key(item):
         path = str(item.fspath)
@@ -35,6 +30,7 @@ def pytest_collection_modifyitems(session, config, items):
             if path.endswith(f):
                 return i
         return 999
+
     items.sort(key=sort_key)
 
 
@@ -51,7 +47,7 @@ def isolated_path(tmp_path, monkeypatch):
     """Replaces manual _make_tmp_dir. Pytest automatically cleans tmp_path."""
     for f in RESOURCE_FILES:
         shutil.copy(RESOURCES / f, tmp_path / f)
-    
+
     # monkeypatch safely restores the working directory after the test
     monkeypatch.chdir(tmp_path)
     return tmp_path
@@ -86,13 +82,7 @@ def ioctx(bins):
     chall_path = bins["elf"]["challs"][0] if bins["elf"]["challs"] else ""
     libc_path = bins["elf"]["libc"][0] if bins["elf"]["libc"] else ""
 
-    ioctx = IOContext(
-        Args(),
-        Config(
-            binary=str(chall_path),
-            libc=str(libc_path)
-        )
-    )
+    ioctx = IOContext(Args(), Config(binary=str(chall_path), libc=str(libc_path)))
     yield ioctx
     ioctx.close()
 
