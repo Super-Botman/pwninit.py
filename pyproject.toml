@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pwninit.py"
-version = "0.1.5"
+version = "0.1.6"
 authors = [
   { name="0xb0tm4n", email="0xb0tm4n@proton.me" },
 ]

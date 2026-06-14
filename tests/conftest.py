@@ -6,15 +6,13 @@ from pathlib import Path
 
 import docker
 import pytest
-from pwninit import IOContext, Config, Args
 from pwninit.pwninit import process_elf, ls
 
 RESOURCES = Path(__file__).parent / "resources"
-RESOURCE_FILES = ["chall", "Dockerfile", "libc.so.6", "ld-linux-x86-64.so.2", "run"]
+RESOURCE_FILES = ["chall.c", "Dockerfile", "libc.so.6", "ld-linux-x86-64.so.2", "run"]
 
 client = docker.from_env()
 
-# Consider utilizing pytest-order plugin instead of this manual hook if dependencies get complex
 collect_order = [
     "tests/test_context.py",
     "tests/test_io.py",
@@ -33,12 +31,31 @@ def pytest_collection_modifyitems(session, config, items):
 
     items.sort(key=sort_key)
 
+def _compile_chall(dest_dir: Path) -> Path:
+    src = dest_dir / "chall.c"
+    out = dest_dir / "chall"
+    subprocess.run(
+        [
+            "gcc",
+            str(src),
+            "-o", str(out),
+            "-m64",
+            "-no-pie",
+            "-fno-stack-protector",
+            "-z", "relro", "-z", "execstack",
+            "-Wl,-rpath,."
+        ],
+        check=True,
+    )
+    return out
+
 
 @pytest.fixture(scope="session")
 def shared_path(tmp_path_factory):
     p = tmp_path_factory.mktemp("shared")
     for f in RESOURCE_FILES:
         shutil.copy(RESOURCES / f, p / f)
+    _compile_chall(p)
     return p
 
 
@@ -47,8 +64,8 @@ def isolated_path(tmp_path, monkeypatch):
     """Replaces manual _make_tmp_dir. Pytest automatically cleans tmp_path."""
     for f in RESOURCE_FILES:
         shutil.copy(RESOURCES / f, tmp_path / f)
+    _compile_chall(tmp_path)
 
-    # monkeypatch safely restores the working directory after the test
     monkeypatch.chdir(tmp_path)
     return tmp_path
 
