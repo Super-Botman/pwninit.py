@@ -30,7 +30,11 @@ Config(
     libc="./libc.so.6"
 )
 
-def exploit(ctx, io):
+
+def setup(args: Args, config: Config):
+    open("flag.txt", "w").write('flag{hello}')
+
+def exploit(ctx: PwnContext, io: IOContext):
     exe = ctx.elf
     libc = ctx.libc
 
