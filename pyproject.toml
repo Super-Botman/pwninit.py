@@ -22,7 +22,7 @@ dependencies = [
   "mako",
   "python-magic",
   "lz4",
-  "frida"
+  "frida",
 ]
 
 [project.optional-dependencies]
@@ -48,6 +48,9 @@ filterwarnings = [
     "ignore::DeprecationWarning:pwnlib"
 ]
 timeout = 60
+
+[tool.uv.sources]
+pwntools = { git = "https://github.com/Gallopsled/pwntools" }
 
 [dependency-groups]
 dev = [
