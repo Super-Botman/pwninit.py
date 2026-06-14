@@ -511,15 +511,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pip"
-version = "26.1.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/01/91/47e7d486260f618783899587af63ccf7980fb60245c3e63dd4571c6b57ad/pip-26.1.2.tar.gz", hash = "sha256:f49cd134c61cf2fd75e0ce2676db03e4054504a5a4986d00f8299ae632dc4605", size = 1840799, upload-time = "2026-05-31T17:33:58.56Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/95/6b5cb3461ea5673ba0995989746db58eb18b91b54dbf331e72f569540946/pip-26.1.2-py3-none-any.whl", hash = "sha256:382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab", size = 1813144, upload-time = "2026-05-31T17:33:56.772Z" },
-]
-
-[[package]]
 name = "pluggy"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -601,7 +592,7 @@ requires-dist = [
     { name = "frida" },
     { name = "lz4" },
     { name = "mako" },
-    { name = "pwntools" },
+    { name = "pwntools", git = "https://github.com/Gallopsled/pwntools" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-ordering", marker = "extra == 'dev'", specifier = ">=0.6.0" },
     { name = "pytest-timeout", marker = "extra == 'dev'", specifier = ">=2.2.0" },
@@ -618,8 +609,8 @@ dev = [
 
 [[package]]
 name = "pwntools"
-version = "4.15.0"
-source = { registry = "https://pypi.org/simple" }
+version = "5.0.0.dev0"
+source = { git = "https://github.com/Gallopsled/pwntools#4c39ca92f2f2d75c4ec957fdefa28d8094ead8ef" }
 dependencies = [
     { name = "capstone" },
     { name = "colored-traceback" },
@@ -627,25 +618,18 @@ dependencies = [
     { name = "mako" },
     { name = "packaging" },
     { name = "paramiko" },
-    { name = "pip" },
     { name = "psutil" },
     { name = "pyelftools" },
     { name = "pygments" },
     { name = "pyserial" },
     { name = "pysocks" },
-    { name = "python-dateutil" },
     { name = "requests" },
     { name = "ropgadget" },
     { name = "rpyc" },
-    { name = "six" },
     { name = "sortedcontainers" },
     { name = "unicorn" },
     { name = "unix-ar" },
     { name = "zstandard" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f2/5c/9ae3d94c98b0b038ffd7f09ebdac506d346fe1b964999f71c96c8a904efd/pwntools-4.15.0.tar.gz", hash = "sha256:d99a917298c1ca7241b51bba9ad2212f2af441ef66488059b2426508e9a2a776", size = 5627629, upload-time = "2025-10-12T15:25:28.931Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/87/03/b5aab57706d61c65aaf6ed181727e7621c7cf32109b22245ac04f1c76094/pwntools-4.15.0-py2.py3-none-any.whl", hash = "sha256:f5508729b310ef1e959ad324306a0964cb6f2b04a34247484e446f0343eefc5c", size = 12873439, upload-time = "2025-10-12T15:25:25.38Z" },
 ]
 
 [[package]]
@@ -769,18 +753,6 @@ wheels = [
 ]
 
 [[package]]
-name = "python-dateutil"
-version = "2.9.0.post0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "six" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/66/c0/0c8b6ad9f17a802ee498c46e004a0eb49bc148f2fd230864601a86dcf6db/python-dateutil-2.9.0.post0.tar.gz", hash = "sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3", size = 342432, upload-time = "2024-03-01T18:36:20.211Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl", hash = "sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427", size = 229892, upload-time = "2024-03-01T18:36:18.57Z" },
-]
-
-[[package]]
 name = "python-magic"
 version = "0.4.27"
 source = { registry = "https://pypi.org/simple" }
@@ -845,15 +817,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/8b/e7/1c17410673b634f4658bb5d2232d0c4507432a97508b2c6708e59481644a/rpyc-6.0.2.tar.gz", hash = "sha256:8e780a6a71b842128a80a337c64adfb6f919014e069951832161c9efc630c93b", size = 62321, upload-time = "2025-04-18T16:33:21.693Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3f/99/2e119d541d596daea39643eb9312b47c7847383951300f889166938035b1/rpyc-6.0.2-py3-none-any.whl", hash = "sha256:8072308ad30725bc281c42c011fc8c922be15f3eeda6eafb2917cafe1b6f00ec", size = 74768, upload-time = "2025-04-18T16:33:20.147Z" },
-]
-
-[[package]]
-name = "six"
-version = "1.17.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
 ]
 
 [[package]]

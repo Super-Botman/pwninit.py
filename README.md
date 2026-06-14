@@ -9,7 +9,7 @@ A Python toolkit for CTF binary exploitation. Streamline setup, development, and
 ## Installation
 
 ```sh
-pipx install pwninit.py
+pip install pwninit.py
 ```
 
 ## Basic Usage Example
