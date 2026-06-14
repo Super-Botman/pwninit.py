@@ -1,6 +1,6 @@
 # CLI
 
-## pwninit - Challenge Setup
+## pwninit
 
 Initialize a pwn challenge environment:
 
@@ -51,7 +51,7 @@ You can also use environment variables:
 
 ---
 
-## run - Exploit Execution
+## run
 
 Execute your exploit with various modes:
 
@@ -123,23 +123,30 @@ Config(
   chall = "sh"
 )
 
-def exploit(ctx: PwnContext, ioctx: IOContext):
+def setup(args: Args, config: Config):
+  # pre-run setup
+
+def exploit(ctx: PwnContext, io: IOContext):
   # actual exploit
 ```
 
-And after this full exploit loaded it will execute the `exploit` function and pass the newly initialised `ctx` and `ioctx`.
+And after this full exploit loaded it will firstly execute the `setup` function that can be used to create files later used by the actual challenge or anyhting that can be usefull and then the `exploit` function and pass the newly initialised `ctx` and `ioctx`.
 
-To initialise the context, `run` uses the `Config` namespace and the args provided by the user to initialise the two classes, [IOContext](/pwninit/io) and [PwnContext](/pwninit/io), this two classes are used to interact and parse the binary during runtime.
+`run` uses the [`Config`](/pwninit/config) and [`Args`](pwninit/io/#pwninit.io.Args) namespaces from your exploit and from the args given to initialise the two classes, [IOContext](/pwninit/io) and [PwnContext](/pwninit/io), this two classes are used to interact with the binary during runtime.
 
-When all of this is set, you can use all the methods defined by IOContext and PwnContext directly in your exploit like this:
+When these classes are instanciated, it will use [`set_ctx`](/pwninit/context) to make all the methods globals so you can uses them directly like this:
 
 ```py
 
-def exploit(ctx: PwnContext, ioctx: IOContext):
-  sl("test") # send b"test" followed by b"\n"
-  line = rl() # receive a line sended by the challenge
+def exploit(ctx: PwnContext, io: IOContext):
+  sl("test") # send b"test" followed by b"\n" (1)
+  line = rl() # receive a line sended by the challenge (2)
   print(line)
-  itrv() # get an interactive shell
+  itrv() # get an interactive shell (3)
 ```
 
-Finally, to get a glimps of all the avaiables methods/helpers/config you can check [pwninit](/pwninit)
+1. `sl` come from [`IOContext.sl`](/pwninit/io/#pwninit.io.IOContext.sl)
+2. `rl` come from [`IOContext.rl`](/pwninit/io/#pwninit.io.IOContext.rl)
+3. `itrv` come from [`IOContext.itrv`](/pwninit/io/#pwninit.io.IOContext.itrv)
+
+To see all the availables methods/helpers/config you can check [pwninit](/pwninit).

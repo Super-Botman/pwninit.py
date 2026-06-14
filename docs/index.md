@@ -27,8 +27,8 @@ A comprehensive Python toolkit for CTF binary exploitation challenges that strea
 ### Install
 
 ```sh
-# Install with pipx (recommended)
-pipx install pwninit.py
+# Install with any package managers
+pip install pwninit.py
 ```
 
 ---
@@ -41,7 +41,7 @@ Check [CLI - Introduction](/cli/intro/) for an introduction on the commands prov
 
 ### Exploit Development
 
-Check [Pwninit](/pwninit) for the full library API or [Exploitation Development](/cli/intro/#exploits) to learn how to create exploit usable with [run](/cli/intro#run-exploit-execution).
+Check [Pwninit](/pwninit) for the full library API or [Exploitation Development](/cli/intro/#exploits) to learn how to create exploit usable with [run](/cli/intro#run).
 
 #### Example
 
@@ -50,19 +50,20 @@ from pwninit import *
 
 Config(
     binary="./chall",
-    libc="./libc.so.6",
-    ld="./ld-linux-x86-64.so.2"
+    libc="./libc.so.6"
 )
 
-def exploit(ctx: PwnContext, ioctx: IOContext):
+
+def setup(args: Args, config: Config):
+    open("flag.txt", "w").write('flag{hello}')
+
+
+def exploit(ctx: PwnContext, io: IOContext):
     exe = ctx.elf
     libc = ctx.libc
 
-    # Example usage:
-    # sl(ret2win("win"))     # Generate a ret2win payload and send it
-    # itrv()                 # Go into interactive mode
-
-    success("All good!")
+    ctx.offset = 128
+    sl(ret2win('shell', ret=False))
     itrv()
 ```
 
@@ -72,23 +73,23 @@ def exploit(ctx: PwnContext, ioctx: IOContext):
 
 ### Core Components
 
-| Module       | Description                                                                                                           |
-| ------------ | --------------------------------------------------------------------------------------------------------------------- |
-| `pwninit.py` | Main CLI entry point for the `pwninit` command. Handles binary analysis, library management, and template generation. |
-| `run.py`     | CLI entry point for the `run` command. Manages local, remote, and debug execution modes.                              |
-| `config.py`  | Centralized configuration management for binary paths, libc, and provider settings.                                   |
-| `context.py` | Definition of global singleton instances used in exploit development.                                                 |
-| `io.py`      | I/O abstraction layer for local, remote (netcat/SSH), and debug (GDB) connections.                                    |
-| `kernel.py`  | Kernel-specific utilities for kernel exploitation challenges.                                                         |
-| `farm.py`    | Challenge fetching and management from various providers.                                                             |
+| Module          | Description                                                                                                           |
+| --------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `pwninit.py`    | Main CLI entry point for the `pwninit` command. Handles binary analysis, library management, and template generation. |
+| `run.py`        | CLI entry point for the `run` command. Manages local, remote, and debug execution modes.                              |
+| `config.py`     | Centralized configuration management for binary paths, libc, and provider settings.                                   |
+| `context.py`    | Definition of global singleton instances used in exploit development.                                                 |
+| `io.py`         | I/O abstraction layer for local, remote (netcat/SSH), and debug (GDB) connections.                                    |
+| `pwncontext.py` | Defines the `PwnContext` class, which encapsulates the binary, libc, and execution environment.                       |
+| `kernel.py`     | Kernel-specific utilities for kernel exploitation challenges.                                                         |
+| `farm.py`       | Challenge fetching and management from various providers.                                                             |
 
 ### Helper Modules
 
-| Module                  | Description                                                                                     |
-| ----------------------- | ----------------------------------------------------------------------------------------------- |
-| `helpers/pwncontext.py` | Defines the `PwnContext` class, which encapsulates the binary, libc, and execution environment. |
-| `helpers/utils.py`      | Utility functions for binary analysis, patching, and exploit development.                       |
-| `helpers/constants.py`  | Global constants and default values.                                                            |
+| Module                 | Description                                                               |
+| ---------------------- | ------------------------------------------------------------------------- |
+| `helpers/utils.py`     | Utility functions for binary analysis, patching, and exploit development. |
+| `helpers/constants.py` | Global constants and default values.                                      |
 
 ### Plugin System
 
@@ -105,6 +106,7 @@ def exploit(ctx: PwnContext, ioctx: IOContext):
 | ------------ | ----------------------------------------- |
 | `exploit.py` | Python exploit starter template.          |
 | `exploit.c`  | C exploit starter template.               |
+| `exploit.h`  | C exploit library helper                  |
 | `notes.md`   | Challenge notes template.                 |
 | `Makefile`   | Build automation for exploit development. |
 
